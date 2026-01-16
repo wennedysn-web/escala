@@ -9,7 +9,6 @@ import {
   Plus, 
   Trash2, 
   RotateCw,
-  // ... rest of imports
   ChevronLeft,
   ChevronRight,
   AlertCircle,
@@ -279,12 +278,18 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    if (username.trim().toLowerCase() === 'admin' && password.trim() === 'tododia') {
-      const mockSession = { user: { email: 'admin@escala.com', id: 'local-admin' } };
+    
+    // Atualizado para aceitar escala@gmail.com ou admin
+    const normalizedUser = username.trim().toLowerCase();
+    const isValidUser = normalizedUser === 'admin' || normalizedUser === 'escala@gmail.com';
+    const isValidPass = password.trim() === 'tododia';
+
+    if (isValidUser && isValidPass) {
+      const mockSession = { user: { email: normalizedUser, id: 'local-admin' } };
       localStorage.setItem('escala_session', JSON.stringify(mockSession));
       setSession(mockSession);
     } else {
-      setError("Acesso negado.");
+      setError("Usuário ou senha inválidos.");
     }
     setLoading(false);
   };
@@ -300,7 +305,7 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
         </div>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[11px] font-black text-slate-600 uppercase tracking-widest pl-1">Usuário</label>
+            <label className="text-[11px] font-black text-slate-600 uppercase tracking-widest pl-1">Usuário / E-mail</label>
             <input 
               type="text" 
               value={username} 
