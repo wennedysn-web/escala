@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./types";
 
@@ -9,10 +8,7 @@ export const generateScheduleWithAI = async (
   environments: Environment[],
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("A chave de API não foi detectada no ambiente.");
-  }
-
+  // Criamos a instância aqui para garantir que pegamos a chave injetada pelo ambiente no momento da chamada
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const systemInstruction = `
@@ -71,7 +67,7 @@ export const generateScheduleWithAI = async (
 
     const text = response.text;
     if (!text) {
-      throw new Error("A IA retornou uma resposta vazia. Verifique sua cota ou conexão.");
+      throw new Error("A IA retornou uma resposta vazia.");
     }
 
     const result = JSON.parse(text);
@@ -82,15 +78,6 @@ export const generateScheduleWithAI = async (
     return result.entries;
   } catch (error: any) {
     console.error("Erro detalhado do Gemini:", error);
-    
-    if (error.message?.includes("API_KEY_INVALID")) {
-      throw new Error("Chave de API inválida ou expirada.");
-    }
-    
-    if (error.message?.includes("429")) {
-      throw new Error("Limite de requisições da IA atingido. Aguarde um minuto.");
-    }
-
-    throw new Error(error.message || "Falha inesperada ao processar a escala.");
+    throw new Error(error.message || "Falha ao processar a escala via IA.");
   }
 };
