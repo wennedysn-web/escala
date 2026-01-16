@@ -22,8 +22,7 @@ import {
   User,
   Key,
   ExternalLink,
-  Info,
-  CheckCircle2
+  Info
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -54,15 +53,23 @@ const App: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Inicializa como true já que a chave foi fornecida e hardcoded no service
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   useEffect(() => {
     const checkKey = async () => {
+      // Verifica se há chave injetada pelo ambiente ou se já temos a fallback
+      const envKey = process.env.API_KEY;
+      if (envKey) {
+        setHasApiKey(true);
+        return;
+      }
+
       const aistudio = (window as any).aistudio as AIStudio | undefined;
       if (aistudio?.hasSelectedApiKey) {
         try {
           const has = await aistudio.hasSelectedApiKey();
-          setHasApiKey(has);
+          if (has) setHasApiKey(true);
         } catch (e) {
           console.warn("Could not check API Key status", e);
         }
@@ -134,7 +141,7 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error(err);
-      setError("Erro ao carregar dados. Verifique sua conexão ou configuração do Supabase.");
+      setError("Erro ao carregar dados. Verifique sua conexão.");
     } finally {
       setLoading(false);
     }
@@ -192,7 +199,7 @@ const App: React.FC = () => {
       console.error(err);
       if (err.message?.includes("API Key") || err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
-        setError("Erro de Autenticação: Por favor, clique em 'Ativar IA' para selecionar uma chave válida.");
+        setError("Erro de Autenticação: A chave de API fornecida parece ter expirado ou atingido o limite.");
       } else {
         setError(err.message || "Ocorreu um erro na IA. Tente novamente em instantes.");
       }
@@ -399,45 +406,20 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; onOpenKey: 
         {!hasKey && (
           <button onClick={onOpenKey} className="group flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-2xl shadow-amber-500/20 active:scale-95">
             <Key size={24} className="group-hover:rotate-12 transition-transform" /> 
-            Ativar IA
+            Substituir Chave IA
           </button>
         )}
       </div>
     </div>
     
-    {(!hasKey || error) && (
-      <div className="bg-white p-10 rounded-[40px] border-2 border-amber-200 shadow-xl space-y-8 animate-in zoom-in-95 duration-300">
-        <div className="flex items-start gap-5">
-          <div className="p-4 bg-amber-100 rounded-3xl text-amber-600">
-            <ShieldAlert size={32} />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-2xl font-black text-slate-900">Configuração de IA Pendente</h3>
-            <p className="text-slate-500 font-medium">A inteligência artificial precisa de uma chave de API para funcionar. Siga os passos abaixo:</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 space-y-3">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-blue-600 shadow-sm border border-slate-100">1</div>
-            <p className="font-bold text-slate-800">Obtenha sua Chave</p>
-            <p className="text-xs text-slate-500 leading-relaxed">Acesse o <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">Google AI Studio</a>, faça login e crie uma "API Key".</p>
-          </div>
-          <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 space-y-3">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-blue-600 shadow-sm border border-slate-100">2</div>
-            <p className="font-bold text-slate-800">Copie e Ative</p>
-            <p className="text-xs text-slate-500 leading-relaxed">Clique no botão amarelo "Ativar IA" acima e siga as instruções na janela do sistema que irá abrir.</p>
-          </div>
-          <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 space-y-3">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-blue-600 shadow-sm border border-slate-100">3</div>
-            <p className="font-bold text-slate-800">Gere a Escala</p>
-            <p className="text-xs text-slate-500 leading-relaxed">Com a IA ativada, clique em "Gerar Nova Escala" para distribuir os funcionários automaticamente.</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-50 p-4 rounded-2xl w-fit">
-          <Info size={14} /> Importante: Sua chave deve estar vinculada a um projeto com faturamento ativo no Cloud.
-        </div>
+    {error && (
+      <div className="bg-white p-10 rounded-[40px] border-2 border-red-200 shadow-xl space-y-4 animate-in zoom-in-95 duration-300">
+         <div className="flex items-center gap-4 text-red-600">
+            <AlertCircle size={32} />
+            <h3 className="text-xl font-black">Ops! Algo deu errado</h3>
+         </div>
+         <p className="text-slate-600 font-medium">{error}</p>
+         <button onClick={onOpenKey} className="text-xs font-black uppercase tracking-widest text-white bg-slate-900 px-6 py-3 rounded-xl hover:bg-black transition-all">Reconfigurar Chave de API</button>
       </div>
     )}
 
@@ -681,7 +663,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
           {!hasKey && (
             <button onClick={onOpenKey} className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-4 rounded-[20px] font-black shadow-lg shadow-amber-500/20 transition-all text-sm flex items-center justify-center gap-2">
-              <Key size={18} /> Ativar IA
+              <Key size={18} /> Reconfigurar Chave
             </button>
           )}
           <button onClick={onGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-2xl shadow-blue-500/30 active:scale-95 transition-all text-lg flex items-center justify-center gap-3">

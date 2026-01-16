@@ -2,6 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./types";
 
+// Prioriza a chave do ambiente, mas usa a chave fornecida pelo usuário como garantia de funcionamento
+const API_KEY = process.env.API_KEY || "AIzaSyClpq8BOCiUVi0QIvDDxO4gE9OihSVNNEs";
+
 export const generateScheduleWithAI = async (
   month: string,
   categories: Category[],
@@ -9,12 +12,12 @@ export const generateScheduleWithAI = async (
   environments: Environment[],
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
-  // Sempre criamos uma nova instância para garantir o uso da chave mais recente injetada pelo ambiente
-  if (!process.env.API_KEY) {
-    throw new Error("API Key não encontrada. Por favor, selecione uma chave de API válida.");
+  
+  if (!API_KEY) {
+    throw new Error("API Key não encontrada. Por favor, configure uma chave válida.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   
   const systemInstruction = `
     Você é um especialista sênior em logística de RH. Sua tarefa é gerar uma escala mensal para o mês de ${month}.
@@ -42,7 +45,6 @@ export const generateScheduleWithAI = async (
   `;
 
   try {
-    // Usando gemini-3-pro-preview para tarefas complexas de raciocínio logístico (STEM/Reasoning)
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: prompt,
@@ -85,7 +87,6 @@ export const generateScheduleWithAI = async (
   } catch (error: any) {
     console.error("Erro detalhado do Gemini:", error);
     
-    // Tratamento específico para erros comuns de chave de API no navegador
     if (error.message?.includes("API Key") || error.message?.includes("API_KEY_INVALID") || error.message?.includes("403")) {
       throw new Error("Problema com a Chave de API: A chave é inválida ou o projeto não possui faturamento ativo.");
     }
