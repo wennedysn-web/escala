@@ -22,7 +22,8 @@ import {
   User,
   Key,
   ExternalLink,
-  Info
+  Info,
+  Trash
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -200,6 +201,34 @@ const App: React.FC = () => {
       .match({ date, employee_id: oldEmpId, month_key: currentMonth });
   };
 
+  const resetDatabase = async () => {
+    if (!confirm("AVISO CRÍTICO: Isto apagará TODOS os dados de funcionários, ambientes, categorias e escalas. Deseja continuar?")) return;
+    if (!confirm("TEM CERTEZA ABSOLUTA? Esta ação não pode ser desfeita.")) return;
+
+    setLoading(true);
+    try {
+      // Deletar em ordem para evitar erros de chave estrangeira
+      await supabase.from('schedules').delete().neq('month_key', 'trash');
+      await supabase.from('special_days').delete().neq('name', 'trash');
+      await supabase.from('employees').delete().neq('name', 'trash');
+      await supabase.from('environments').delete().neq('name', 'trash');
+      await supabase.from('categories_escala').delete().neq('name', 'trash');
+
+      setState({
+        categories: [],
+        employees: [],
+        environments: [],
+        specialDays: [],
+        schedules: {}
+      });
+      alert("Base de dados limpa com sucesso!");
+    } catch (err: any) {
+      alert("Erro ao limpar base: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!session) return <Login setSession={setSession} />;
 
   return (
@@ -245,7 +274,7 @@ const App: React.FC = () => {
         
         <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
-          {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} />}
+          {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} onReset={resetDatabase} />}
           {activeTab === 'calendar' && (
             <CalendarView 
               state={state} 
@@ -382,8 +411,8 @@ const StatCard: React.FC<any> = ({ icon, label, value, color }) => (
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; loadData: () => void }> = ({ state, loadData }) => {
-  const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day'>('cat');
+const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void }> = ({ state, loadData, onReset }) => {
+  const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day' | 'sys'>('cat');
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async (table: string, payload: any) => {
@@ -410,12 +439,33 @@ const Setup: React.FC<{ state: AppState; loadData: () => void }> = ({ state, loa
         <TabBtn active={tab === 'emp'} onClick={() => setTab('emp')} label="Equipe" />
         <TabBtn active={tab === 'env'} onClick={() => setTab('env')} label="Ambientes" />
         <TabBtn active={tab === 'day'} onClick={() => setTab('day')} label="Feriados/Dom" />
+        <TabBtn active={tab === 'sys'} onClick={() => setTab('sys')} label="Sistema" />
       </div>
       <div className="p-10 flex-1">
         {tab === 'cat' && <CategorySetup categories={state.categories} onAdd={(n: string) => handleAdd('categories_escala', { name: n })} onDel={(id: string) => handleDel('categories_escala', id)} />}
         {tab === 'emp' && <EmployeeSetup employees={state.employees} categories={state.categories} onAdd={(n: string, c: string, r: boolean) => handleAdd('employees', { name: n, category_id: c, is_restricted: r })} onDel={(id: string) => handleDel('employees', id)} />}
         {tab === 'env' && <EnvironmentSetup environments={state.environments} categories={state.categories} onAdd={(n: string, r: any) => handleAdd('environments', { name: n, requirements: r })} onDel={(id: string) => handleDel('environments', id)} />}
         {tab === 'day' && <DaySetup days={state.specialDays} onAdd={(d: string, n: string, t: any) => handleAdd('special_days', { date: d, name: n, type: t })} onDel={(date: string) => handleDel('special_days', date, 'date')} />}
+        {tab === 'sys' && (
+          <div className="space-y-10 animate-in fade-in">
+             <div className="bg-red-950/20 border-2 border-red-900/50 p-10 rounded-[40px] space-y-6">
+                <div className="flex items-center gap-4 text-red-500">
+                  <ShieldAlert size={32} />
+                  <h3 className="text-2xl font-black uppercase tracking-tight">Zona de Perigo</h3>
+                </div>
+                <p className="text-slate-400 font-bold max-w-xl">
+                  Esta ação irá apagar permanentemente todos os dados de cadastro e escalas. 
+                  O sistema voltará ao estado original, mantendo apenas o seu login.
+                </p>
+                <button 
+                  onClick={onReset}
+                  className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-red-600/20 transition-all flex items-center gap-3"
+                >
+                  <Trash size={20} /> Limpar Toda a Base de Dados
+                </button>
+             </div>
+          </div>
+        )}
       </div>
     </div>
   );
