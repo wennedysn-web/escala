@@ -9,6 +9,7 @@ import {
   Plus, 
   Trash2, 
   RotateCw,
+  // ... rest of imports
   ChevronLeft,
   ChevronRight,
   AlertCircle,
@@ -53,7 +54,6 @@ const App: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   useEffect(() => {
     const localSess = localStorage.getItem('escala_session');
@@ -206,7 +206,7 @@ const App: React.FC = () => {
           </div>
           <div>
             <h1 className="text-lg font-black tracking-tight leading-none">App Escala</h1>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Gestão Inteligente</p>
+            <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest mt-1">Gestão Inteligente</p>
           </div>
         </div>
         
@@ -218,7 +218,7 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-6 border-t border-slate-800">
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all font-semibold group">
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-300 hover:bg-red-500/10 hover:text-red-400 transition-all font-semibold group">
             <LogOut size={18} /> 
             <span>Sair do sistema</span>
           </button>
@@ -263,9 +263,8 @@ const App: React.FC = () => {
   );
 };
 
-// ... (NavItem, Login, StatCard permanecem iguais)
 const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 active:scale-95' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+  <button onClick={onClick} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 active:scale-95' : 'text-slate-300 hover:bg-slate-800 hover:text-slate-100'}`}>
     {icon} <span>{label}</span>
   </button>
 );
@@ -292,24 +291,40 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0F172A] px-6">
-      <div className="w-full max-w-md bg-white p-10 md:p-12 rounded-[40px] shadow-2xl space-y-10">
+      <div className="w-full max-w-md bg-white p-10 md:p-12 rounded-[40px] shadow-2xl space-y-10 border border-white/20">
         <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-blue-50 text-blue-600 rounded-[32px]">
+          <div className="inline-flex items-center justify-center w-24 h-24 bg-blue-50 text-blue-600 rounded-[32px] shadow-sm">
             <CalendarCheck size={48} />
           </div>
-          <h2 className="text-4xl font-black text-slate-900">Portal Escala</h2>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight">Portal Escala</h2>
         </div>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[11px] font-black text-slate-400 uppercase">Usuário</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100" required />
+            <label className="text-[11px] font-black text-slate-600 uppercase tracking-widest pl-1">Usuário</label>
+            <input 
+              type="text" 
+              value={username} 
+              onChange={e => setUsername(e.target.value)} 
+              className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-200 text-slate-900 font-medium rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-600 transition-all placeholder-slate-400" 
+              placeholder="Digite seu usuário"
+              required 
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-[11px] font-black text-slate-400 uppercase">Senha</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100" required />
+            <label className="text-[11px] font-black text-slate-600 uppercase tracking-widest pl-1">Senha</label>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-200 text-slate-900 font-medium rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-600 transition-all placeholder-slate-400" 
+              placeholder="Digite sua senha"
+              required 
+            />
           </div>
-          {error && <p className="text-red-600 text-xs font-bold text-center">{error}</p>}
-          <button type="submit" className="w-full bg-slate-900 text-white font-black py-5 rounded-[20px] shadow-2xl">Entrar</button>
+          {error && <p className="text-red-600 text-sm font-bold text-center animate-shake">{error}</p>}
+          <button type="submit" className="w-full bg-[#0F172A] hover:bg-slate-800 text-white font-black py-5 rounded-[20px] shadow-xl hover:shadow-2xl transition-all transform active:scale-[0.98]">
+            Entrar
+          </button>
         </form>
       </div>
     </div>
@@ -321,7 +336,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-10 rounded-[40px] shadow-sm border border-slate-200/50">
       <div>
         <h2 className="text-4xl font-black text-slate-900">Bem-vindo</h2>
-        <p className="text-slate-500 font-semibold mt-1">Gerencie as escalas de domingos e feriados.</p>
+        <p className="text-slate-600 font-semibold mt-1">Gerencie as escalas de domingos e feriados.</p>
       </div>
       <button onClick={onGenerate} disabled={loading} className="flex items-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-xl active:scale-95 disabled:opacity-50">
         <CalendarCheck size={24} /> Gerar Escala Mensal
@@ -348,13 +363,11 @@ const StatCard: React.FC<any> = ({ icon, label, value, color }) => (
   <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200/40 flex items-center gap-6">
     <div className={`p-5 ${color} rounded-[28px]`}>{icon}</div>
     <div>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
       <p className="text-3xl font-black text-slate-900">{value}</p>
     </div>
   </div>
 );
-
-// ... (Setup, TabBtn, CategorySetup, EmployeeSetup, EnvironmentSetup, DaySetup permanecem iguais)
 
 const Setup: React.FC<{ state: AppState; loadData: () => void }> = ({ state, loadData }) => {
   const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day'>('cat');
@@ -396,7 +409,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void }> = ({ state, loa
 };
 
 const TabBtn: React.FC<{ active: boolean; onClick: () => void; label: string }> = ({ active, onClick, label }) => (
-  <button onClick={onClick} className={`px-10 py-5 text-[11px] font-black uppercase tracking-widest transition-all rounded-2xl whitespace-nowrap ${active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+  <button onClick={onClick} className={`px-10 py-5 text-[11px] font-black uppercase tracking-widest transition-all rounded-2xl whitespace-nowrap ${active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
     {label}
   </button>
 );
@@ -406,14 +419,14 @@ const CategorySetup: React.FC<any> = ({ categories, onAdd, onDel }) => {
   return (
     <div className="space-y-10 animate-in fade-in">
       <div className="flex gap-4">
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Porteiro..." className="flex-1 bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]" />
-        <button onClick={() => { if(name){ onAdd(name); setName(''); } }} className="bg-slate-900 text-white px-8 rounded-[20px] font-black"><Plus/></button>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Porteiro..." className="flex-1 bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none focus:border-blue-600" />
+        <button onClick={() => { if(name){ onAdd(name); setName(''); } }} className="bg-slate-900 text-white px-8 rounded-[20px] font-black transition-all hover:bg-slate-800"><Plus/></button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {categories.map((c: any) => (
-          <div key={c.id} className="flex justify-between items-center p-5 bg-slate-50 border border-slate-100 rounded-[24px]">
-            <span className="font-bold">{c.name}</span>
-            <button onClick={() => onDel(c.id)} className="text-red-400"><Trash2 size={18}/></button>
+          <div key={c.id} className="flex justify-between items-center p-5 bg-slate-50 border border-slate-200 rounded-[24px]">
+            <span className="font-bold text-slate-800">{c.name}</span>
+            <button onClick={() => onDel(c.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button>
           </div>
         ))}
       </div>
@@ -428,25 +441,25 @@ const EmployeeSetup: React.FC<any> = ({ employees, categories, onAdd, onDel }) =
   return (
     <div className="space-y-10 animate-in fade-in">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome" className="md:col-span-2 bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]" />
-        <select value={cat} onChange={e => setCat(e.target.value)} className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome" className="md:col-span-2 bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none" />
+        <select value={cat} onChange={e => setCat(e.target.value)} className="bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none">
           <option value="">Categoria</option>
           {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <button onClick={() => { if(name && cat){ onAdd(name, cat, res); setName(''); setCat(''); setRes(false); } }} className="bg-blue-600 text-white py-4 rounded-[20px] font-black">Cadastrar</button>
+        <button onClick={() => { if(name && cat){ onAdd(name, cat, res); setName(''); setCat(''); setRes(false); } }} className="bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-[20px] font-black shadow-lg">Cadastrar</button>
       </div>
       <label className="flex items-center gap-4 cursor-pointer">
-        <input type="checkbox" checked={res} onChange={e => setRes(e.target.checked)} className="w-5 h-5" />
-        <span className="text-xs font-black text-slate-500 uppercase">Colaborador com Restrição (Nunca trabalha só)</span>
+        <input type="checkbox" checked={res} onChange={e => setRes(e.target.checked)} className="w-5 h-5 accent-blue-600" />
+        <span className="text-xs font-black text-slate-600 uppercase">Colaborador com Restrição (Nunca trabalha só)</span>
       </label>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {employees.map((e: any) => (
-          <div key={e.id} className="p-6 bg-slate-50 border border-slate-100 rounded-[28px] flex justify-between items-center">
+          <div key={e.id} className="p-6 bg-slate-50 border border-slate-200 rounded-[28px] flex justify-between items-center">
             <div>
-              <p className="font-black text-slate-900 flex items-center gap-2">{e.name} {e.isRestricted && <ShieldAlert size={16} className="text-red-500"/>}</p>
-              <p className="text-[10px] text-slate-400 font-black uppercase">{categories.find((c: any) => c.id === e.categoryId)?.name}</p>
+              <p className="font-black text-slate-900 flex items-center gap-2 text-lg">{e.name} {e.isRestricted && <ShieldAlert size={16} className="text-red-500"/>}</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">{categories.find((c: any) => c.id === e.categoryId)?.name}</p>
             </div>
-            <button onClick={() => onDel(e.id)} className="text-red-400"><Trash2 size={20}/></button>
+            <button onClick={() => onDel(e.id)} className="text-red-500 hover:text-red-700 transition-colors"><Trash2 size={20}/></button>
           </div>
         ))}
       </div>
@@ -461,32 +474,32 @@ const EnvironmentSetup: React.FC<any> = ({ environments, categories, onAdd, onDe
     <div className="space-y-10 animate-in fade-in">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <div className="space-y-6">
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do Posto/Ambiente" className="w-full bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]" />
-          <div className="bg-slate-50 p-6 rounded-[32px] space-y-4">
-            <p className="text-[10px] font-black text-slate-400 uppercase">Requisitos de Equipe:</p>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do Posto/Ambiente" className="w-full bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none" />
+          <div className="bg-slate-50 p-6 rounded-[32px] space-y-4 border border-slate-100">
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Requisitos de Equipe:</p>
             {categories.map((c: any) => (
               <div key={c.id} className="flex items-center justify-between">
-                <span className="text-sm font-bold text-slate-600">{c.name}</span>
-                <input type="number" min="0" value={reqs[c.id] || 0} onChange={e => setReqs({...reqs, [c.id]: parseInt(e.target.value)||0})} className="w-16 py-2 bg-white border border-slate-100 rounded-xl text-center font-black" />
+                <span className="text-sm font-bold text-slate-700">{c.name}</span>
+                <input type="number" min="0" value={reqs[c.id] || 0} onChange={e => setReqs({...reqs, [c.id]: parseInt(e.target.value)||0})} className="w-16 py-2 bg-white border border-slate-200 rounded-xl text-center font-black text-slate-900 shadow-sm" />
               </div>
             ))}
           </div>
-          <button onClick={() => { if(name){ onAdd(name, reqs); setName(''); setReqs({}); } }} className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black">Salvar Posto</button>
+          <button onClick={() => { if(name){ onAdd(name, reqs); setName(''); setReqs({}); } }} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-5 rounded-[24px] font-black transition-all">Salvar Posto</button>
         </div>
         <div className="space-y-4">
           {environments.map((env: any) => (
-            <div key={env.id} className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] flex justify-between items-start">
+            <div key={env.id} className="p-6 bg-slate-50 border border-slate-200 rounded-[32px] flex justify-between items-start">
               <div className="space-y-2">
-                <p className="font-black text-slate-900">{env.name}</p>
+                <p className="font-black text-slate-900 text-lg">{env.name}</p>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(env.requirements).map(([cid, qty]: any) => qty > 0 && (
-                    <div key={cid} className="text-[9px] font-black bg-white border border-slate-100 px-2 py-1 rounded-lg text-slate-500">
+                    <div key={cid} className="text-[9px] font-black bg-white border border-slate-200 px-3 py-1 rounded-lg text-slate-600 shadow-sm">
                       {categories.find((c: any) => c.id === cid)?.name}: {qty}
                     </div>
                   ))}
                 </div>
               </div>
-              <button onClick={() => onDel(env.id)} className="text-red-400"><Trash2 size={18}/></button>
+              <button onClick={() => onDel(env.id)} className="text-red-500 hover:text-red-700 transition-colors"><Trash2 size={18}/></button>
             </div>
           ))}
         </div>
@@ -502,25 +515,25 @@ const DaySetup: React.FC<any> = ({ days, onAdd, onDel }) => {
   return (
     <div className="space-y-10 animate-in fade-in">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]" />
-        <select value={type} onChange={e => setType(e.target.value)} className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]">
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none" />
+        <select value={type} onChange={e => setType(e.target.value)} className="bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none">
           <option value="holiday">Feriado</option>
           <option value="sunday">Domingo</option>
         </select>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Identificação" className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px]" />
-        <button onClick={() => { if(date && name){ onAdd(date, name, type); setDate(''); setName(''); } }} className="bg-purple-600 text-white rounded-[20px] font-black">Registrar</button>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Identificação" className="bg-slate-50 border border-slate-200 px-6 py-4 rounded-[20px] text-slate-800 font-medium outline-none" />
+        <button onClick={() => { if(date && name){ onAdd(date, name, type); setDate(''); setName(''); } }} className="bg-purple-600 hover:bg-purple-700 text-white rounded-[20px] font-black shadow-lg">Registrar</button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {days.map((d: any) => (
-          <div key={d.date} className="p-6 bg-slate-50 border border-slate-100 rounded-[28px] flex justify-between items-center">
+          <div key={d.date} className="p-6 bg-slate-50 border border-slate-200 rounded-[28px] flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div className="text-purple-600"><CalendarDays size={24}/></div>
               <div>
                 <p className="font-black text-slate-900">{new Date(d.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
-                <p className="text-[10px] font-black text-blue-500 uppercase">{d.name}</p>
+                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{d.name}</p>
               </div>
             </div>
-            <button onClick={() => onDel(d.date)} className="text-red-400"><Trash2 size={18}/></button>
+            <button onClick={() => onDel(d.date)} className="text-red-500 hover:text-red-700 transition-colors"><Trash2 size={18}/></button>
           </div>
         ))}
       </div>
@@ -532,7 +545,6 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
   const monthLabel = new Date(currentMonth + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const entries = state.schedules[currentMonth] || [];
 
-  // FILTRO: Exibe APENAS os domingos e feriados cadastrados que pertencem ao mês atual
   const displayDays = state.specialDays
     .filter(d => d.date.startsWith(currentMonth))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -541,9 +553,9 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
     <div className="space-y-10 animate-in fade-in">
       <header className="flex flex-col lg:flex-row justify-between items-center gap-8 bg-white p-10 rounded-[40px] shadow-sm border border-slate-200/50">
         <div className="flex items-center gap-6">
-          <button onClick={() => onMonthChange(-1)} className="p-4 bg-slate-50 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronLeft/></button>
+          <button onClick={() => onMonthChange(-1)} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronLeft/></button>
           <h2 className="text-3xl font-black text-slate-900 capitalize min-w-[200px] text-center">{monthLabel}</h2>
-          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-50 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronRight/></button>
+          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronRight/></button>
         </div>
         <button onClick={onGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-lg transition-all flex items-center gap-3">
            <CalendarCheck size={24} /> Otimizar Escala via IA
@@ -551,16 +563,16 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
       </header>
 
       {error && (
-        <div className="bg-red-50 p-6 rounded-[30px] border border-red-100 flex items-center gap-4 text-red-600 font-bold">
+        <div className="bg-red-50 p-6 rounded-[30px] border border-red-200 flex items-center gap-4 text-red-600 font-bold">
           <AlertCircle size={24} /> {error}
         </div>
       )}
 
       {displayDays.length === 0 ? (
-        <div className="bg-white p-24 rounded-[60px] border-2 border-dashed border-slate-200 text-center space-y-4">
-          <CalendarDays size={64} className="mx-auto text-slate-200" />
+        <div className="bg-white p-24 rounded-[60px] border-2 border-dashed border-slate-300 text-center space-y-4">
+          <CalendarDays size={64} className="mx-auto text-slate-300" />
           <h3 className="text-2xl font-black text-slate-400">Sem dias citados para {monthLabel}</h3>
-          <p className="text-slate-400">Cadastre os Domingos e Feriados deste mês na aba de Configurações para gerar a escala.</p>
+          <p className="text-slate-500 font-medium max-w-md mx-auto">Cadastre os Domingos e Feriados deste mês na aba de Configurações para gerar a escala.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
@@ -574,26 +586,25 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex flex-col">
                     <span className="text-4xl font-black text-slate-900 leading-none">{dayNumber}</span>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mt-1">{dateObj.toLocaleDateString('pt-BR', {weekday: 'long', timeZone: 'UTC'})}</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider mt-1">{dateObj.toLocaleDateString('pt-BR', {weekday: 'long', timeZone: 'UTC'})}</span>
                   </div>
-                  <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest text-white ${specialDay.type === 'holiday' ? 'bg-amber-500' : 'bg-blue-500'}`}>
+                  <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest text-white shadow-sm ${specialDay.type === 'holiday' ? 'bg-amber-500' : 'bg-blue-500'}`}>
                     {specialDay.name}
                   </span>
                 </div>
                 <div className="space-y-3">
                   {dayEntries.length === 0 ? (
-                    <p className="text-xs text-slate-300 italic">Escala não gerada para este dia.</p>
+                    <p className="text-xs text-slate-400 italic font-medium">Escala não gerada para este dia.</p>
                   ) : (
                     dayEntries.map((e: any) => {
                       const emp = state.employees.find((emp: any) => emp.id === e.employeeId);
                       const env = state.environments.find((env: any) => env.id === e.environmentId);
                       return (
-                        <div key={e.employeeId + e.environmentId} className="group relative bg-slate-50 p-4 rounded-[20px] border border-slate-100 hover:bg-blue-600 hover:text-white transition-all">
-                          <p className="text-[12px] font-black text-slate-800 group-hover:text-white truncate pr-2">{emp?.name || 'Vazio'}</p>
-                          <p className="text-[9px] font-bold text-slate-400 group-hover:text-blue-100 mt-0.5 uppercase flex items-center gap-1"><Building2 size={10}/> {env?.name}</p>
+                        <div key={e.employeeId + e.environmentId} className="group relative bg-slate-50 p-4 rounded-[20px] border border-slate-200 hover:bg-blue-600 hover:border-blue-700 hover:text-white transition-all shadow-sm">
+                          <p className="text-[12px] font-black text-slate-900 group-hover:text-white truncate pr-2">{emp?.name || 'Vazio'}</p>
+                          <p className="text-[9px] font-bold text-slate-500 group-hover:text-blue-100 mt-0.5 uppercase flex items-center gap-1 tracking-wider"><Building2 size={10}/> {env?.name}</p>
                           
-                          {/* Substituição Rápida */}
-                          <div className="opacity-0 group-hover:opacity-100 absolute inset-0 bg-blue-600 rounded-[20px] flex items-center justify-center">
+                          <div className="opacity-0 group-hover:opacity-100 absolute inset-0 bg-blue-600 rounded-[20px] flex items-center justify-center transition-all">
                             <select 
                               className="w-full bg-transparent text-white text-[11px] font-black text-center outline-none cursor-pointer"
                               value={e.employeeId}
@@ -629,34 +640,34 @@ const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
         <h2 className="text-4xl font-black text-slate-900">Efetivo Total</h2>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Localizar..." className="w-full pl-14 pr-6 py-4 bg-white border border-slate-200/50 rounded-[24px] outline-none shadow-sm" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Localizar..." className="w-full pl-14 pr-6 py-4 bg-white border-2 border-slate-200 rounded-[24px] outline-none shadow-sm focus:border-blue-600 transition-all text-slate-800 font-medium" />
         </div>
       </div>
-      <div className="bg-white rounded-[40px] border border-slate-200/50 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm">
         <table className="w-full text-left">
           <thead>
-            <tr className="bg-slate-50/50 border-b border-slate-100">
-              <th className="p-8 text-[11px] font-black text-slate-400 uppercase">Colaborador</th>
-              <th className="p-8 text-[11px] font-black text-slate-400 uppercase">Categoria</th>
-              <th className="p-8 text-[11px] font-black text-slate-400 uppercase">Status</th>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="p-8 text-[11px] font-black text-slate-600 uppercase tracking-widest">Colaborador</th>
+              <th className="p-8 text-[11px] font-black text-slate-600 uppercase tracking-widest">Categoria</th>
+              <th className="p-8 text-[11px] font-black text-slate-600 uppercase tracking-widest">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-slate-100">
             {filtered.map(e => (
-              <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+              <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
                 <td className="p-8">
-                  <span className="font-black text-slate-800 text-lg">{e.name}</span>
+                  <span className="font-black text-slate-900 text-xl">{e.name}</span>
                 </td>
                 <td className="p-8">
-                  <span className="px-5 py-2 bg-white border border-slate-200 rounded-[14px] text-[10px] font-black text-slate-500 uppercase">
+                  <span className="px-5 py-2 bg-slate-50 border border-slate-200 rounded-[14px] text-[10px] font-black text-slate-600 uppercase tracking-wider">
                     {state.categories.find(c => c.id === e.categoryId)?.name}
                   </span>
                 </td>
                 <td className="p-8">
                   {e.isRestricted ? (
-                    <span className="flex items-center gap-2 text-red-500 font-black text-[11px] uppercase bg-red-50 px-4 py-2 rounded-xl"><ShieldAlert size={16}/> Restrição</span>
+                    <span className="flex items-center gap-2 text-red-600 font-black text-[11px] uppercase bg-red-50 px-4 py-2 rounded-xl border border-red-100 shadow-sm"><ShieldAlert size={16}/> Restrição</span>
                   ) : (
-                    <span className="text-emerald-500 font-black text-[11px] uppercase bg-emerald-50 px-4 py-2 rounded-xl">Disponível</span>
+                    <span className="text-emerald-600 font-black text-[11px] uppercase bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm">Disponível</span>
                   )}
                 </td>
               </tr>
