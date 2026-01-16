@@ -21,14 +21,14 @@ import {
   UserCheck,
   User,
   Key,
-  ExternalLink
+  ExternalLink,
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
-// Fix: Estendendo a interface AIStudio em vez de redeclarar a propriedade aistudio no Window
-// Isso resolve o erro de conflito de modificadores e tipos ("Property 'aistudio' must be of type 'AIStudio'")
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
@@ -58,7 +58,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkKey = async () => {
-      // Usamos cast para AIStudio se necessário para garantir o acesso aos métodos
       const aistudio = (window as any).aistudio as AIStudio | undefined;
       if (aistudio?.hasSelectedApiKey) {
         try {
@@ -135,7 +134,7 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error(err);
-      setError("Nota: O acesso ao banco de dados pode estar restrito. Certifique-se de ter criado o usuário no Supabase.");
+      setError("Erro ao carregar dados. Verifique sua conexão ou configuração do Supabase.");
     } finally {
       setLoading(false);
     }
@@ -151,7 +150,6 @@ const App: React.FC = () => {
     const aistudio = (window as any).aistudio as AIStudio | undefined;
     if (aistudio?.openSelectKey) {
       await aistudio.openSelectKey();
-      // Assume-se sucesso após abertura do diálogo conforme diretrizes (para evitar race condition)
       setHasApiKey(true);
       setError(null);
     }
@@ -331,7 +329,6 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
     <div className="min-h-screen flex items-center justify-center bg-[#0F172A] px-6">
       <div className="w-full max-w-md bg-white p-10 md:p-12 rounded-[40px] shadow-2xl space-y-10 border border-white/10 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
-        
         <div className="text-center space-y-4">
           <div className="inline-flex items-center justify-center w-24 h-24 bg-blue-50 text-blue-600 rounded-[32px] mb-2 shadow-inner">
             <CalendarCheck size={48} />
@@ -339,7 +336,6 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
           <h2 className="text-4xl font-black text-slate-900 tracking-tight">Portal Escala</h2>
           <p className="text-slate-500 font-medium text-sm">Gestão de Equipes Inteligente.</p>
         </div>
-
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Usuário</label>
@@ -380,7 +376,6 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
             {loading ? 'Validando...' : 'Entrar no Sistema'}
           </button>
         </form>
-        
         <div className="pt-6 border-t border-slate-50 text-center space-y-2">
            <p className="text-[9px] text-slate-300 font-medium">Versão 3.0 Stable</p>
         </div>
@@ -404,26 +399,44 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; onOpenKey: 
         {!hasKey && (
           <button onClick={onOpenKey} className="group flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-2xl shadow-amber-500/20 active:scale-95">
             <Key size={24} className="group-hover:rotate-12 transition-transform" /> 
-            Ativar IA (Selecionar Chave)
+            Ativar IA
           </button>
         )}
       </div>
     </div>
     
-    {error && (
-      <div className="bg-amber-50 border border-amber-200 text-amber-700 px-6 py-5 rounded-3xl flex items-start gap-4 font-semibold text-sm shadow-sm">
-        <AlertCircle size={24} className="shrink-0" />
-        <div>
-          <p className="font-bold">Aviso de Configuração:</p>
-          <p className="mt-1 opacity-90">{error}</p>
-          {!hasKey && (
-            <div className="mt-3 flex flex-col gap-2">
-              <button onClick={onOpenKey} className="text-xs font-black uppercase tracking-widest text-amber-800 bg-amber-200/50 px-4 py-2 rounded-lg w-fit hover:bg-amber-300 transition-colors">Selecionar Chave de API</button>
-              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] text-amber-900/60 underline flex items-center gap-1">
-                Ver documentação de faturamento <ExternalLink size={10}/>
-              </a>
-            </div>
-          )}
+    {(!hasKey || error) && (
+      <div className="bg-white p-10 rounded-[40px] border-2 border-amber-200 shadow-xl space-y-8 animate-in zoom-in-95 duration-300">
+        <div className="flex items-start gap-5">
+          <div className="p-4 bg-amber-100 rounded-3xl text-amber-600">
+            <ShieldAlert size={32} />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-2xl font-black text-slate-900">Configuração de IA Pendente</h3>
+            <p className="text-slate-500 font-medium">A inteligência artificial precisa de uma chave de API para funcionar. Siga os passos abaixo:</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 space-y-3">
+            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-blue-600 shadow-sm border border-slate-100">1</div>
+            <p className="font-bold text-slate-800">Obtenha sua Chave</p>
+            <p className="text-xs text-slate-500 leading-relaxed">Acesse o <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">Google AI Studio</a>, faça login e crie uma "API Key".</p>
+          </div>
+          <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 space-y-3">
+            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-blue-600 shadow-sm border border-slate-100">2</div>
+            <p className="font-bold text-slate-800">Copie e Ative</p>
+            <p className="text-xs text-slate-500 leading-relaxed">Clique no botão amarelo "Ativar IA" acima e siga as instruções na janela do sistema que irá abrir.</p>
+          </div>
+          <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 space-y-3">
+            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-blue-600 shadow-sm border border-slate-100">3</div>
+            <p className="font-bold text-slate-800">Gere a Escala</p>
+            <p className="text-xs text-slate-500 leading-relaxed">Com a IA ativada, clique em "Gerar Nova Escala" para distribuir os funcionários automaticamente.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-50 p-4 rounded-2xl w-fit">
+          <Info size={14} /> Importante: Sua chave deve estar vinculada a um projeto com faturamento ativo no Cloud.
         </div>
       </div>
     )}
@@ -749,7 +762,6 @@ const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Localizar por nome..." className="w-full pl-14 pr-6 py-4.5 bg-white border border-slate-200/50 rounded-[24px] shadow-sm outline-none focus:ring-4 focus:ring-blue-100 font-medium transition-all" />
         </div>
       </div>
-      
       <div className="bg-white rounded-[40px] border border-slate-200/50 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
