@@ -140,7 +140,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const currentMonthDays = state.specialDays.filter(d => d.date.startsWith(currentMonth));
+    const currentMonthDays = state.specialDays.filter((d: SpecialDay) => d.date.startsWith(currentMonth));
     if (currentMonthDays.length === 0) {
       setError("Nenhum Domingo ou Feriado cadastrado para este mês.");
       return;
@@ -563,8 +563,8 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
   const entries = state.schedules[currentMonth] || [];
 
   const displayDays = state.specialDays
-    .filter(d => d.date.startsWith(currentMonth))
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter((d: SpecialDay) => d.date.startsWith(currentMonth))
+    .sort((a: SpecialDay, b: SpecialDay) => a.date.localeCompare(b.date));
 
   return (
     <div className="space-y-10 animate-in fade-in">
@@ -593,7 +593,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {displayDays.map((specialDay) => {
+          {displayDays.map((specialDay: SpecialDay) => {
             const dayEntries = entries.filter((e: any) => e.date === specialDay.date);
             const dateObj = new Date(specialDay.date);
             const dayNumber = dateObj.getUTCDate();
