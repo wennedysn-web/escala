@@ -46,7 +46,6 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Verificar sessão local persistida (para o bypass admin)
     const localSess = localStorage.getItem('escala_session');
     if (localSess) {
       setSession(JSON.parse(localSess));
@@ -156,7 +155,7 @@ const App: React.FC = () => {
       }));
     } catch (err: any) {
       console.error(err);
-      setError("Ocorreu um erro na IA. Tente novamente em instantes.");
+      setError(err.message || "Ocorreu um erro na IA. Tente novamente em instantes.");
     } finally {
       setLoading(false);
     }
@@ -215,7 +214,7 @@ const App: React.FC = () => {
                 <div className="w-12 h-12 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
                 <RotateCw className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-600" size={16} />
               </div>
-              <p className="font-bold text-sm tracking-tight">Atualizando dados...</p>
+              <p className="font-bold text-sm tracking-tight">Processando dados...</p>
             </div>
           </div>
         )}
@@ -264,7 +263,6 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
     const userClean = username.trim().toLowerCase();
     const passClean = password.trim();
 
-    // 1. Prioridade: Bypass Local para o administrador solicitado
     if (userClean === 'admin' && passClean === 'tododia') {
       const mockSession = { user: { email: 'admin@escala.com', id: 'local-admin' }, expires_at: Date.now() + 86400000 };
       localStorage.setItem('escala_session', JSON.stringify(mockSession));
@@ -273,7 +271,6 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
       return;
     }
 
-    // 2. Fallback: Tentativa via Supabase Auth
     const loginEmail = userClean.includes('@') ? userClean : `${userClean}@escala.com`;
     const { error: authError } = await supabase.auth.signInWithPassword({ 
       email: loginEmail, 
@@ -470,7 +467,6 @@ const CategorySetup: React.FC<any> = ({ categories, onAdd, onDel }) => {
         {categories.map((c: any) => (
           <div key={c.id} className="group flex justify-between items-center p-5 bg-slate-50/50 border border-slate-100 rounded-[24px] hover:bg-white hover:shadow-xl transition-all">
             <span className="font-bold text-slate-700">{c.name}</span>
-            {/* Fix: changed onDel(id) to onDel(c.id) to resolve the undefined 'id' error */}
             <button onClick={() => onDel(c.id)} className="text-slate-200 hover:text-red-500 transition-colors p-2"><Trash2 size={18}/></button>
           </div>
         ))}

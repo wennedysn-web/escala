@@ -9,43 +9,41 @@ export const generateScheduleWithAI = async (
   environments: Environment[],
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
+  if (!process.env.API_KEY) {
+    throw new Error("A chave de API não foi detectada no ambiente.");
+  }
+
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const systemInstruction = `
-    Você é um especialista em logística de RH. Sua tarefa é gerar uma escala mensal para o mês de ${month}.
+    Você é um especialista sênior em logística de RH. Sua tarefa é gerar uma escala mensal para o mês de ${month}.
     
-    OBJETIVO PRINCIPAL:
-    - Alternar funcionários. Se um funcionário trabalhou recentemente, ele deve ser a última opção para o próximo dia, priorizando quem NÃO trabalhou ainda ou trabalhou menos vezes no mês.
-    
-    REGRAS DE OURO:
-    1. Respeite os requisitos de cada ambiente (JSON requirements).
-    2. Identifique feriados e domingos como dias de escala reduzida ou especial se necessário.
-    3. Um funcionário NUNCA pode estar em dois ambientes no mesmo dia.
-    4. DISTRIBUIÇÃO JUSTA: A IA deve monitorar o histórico interno da geração para não sobrecarregar ninguém.
+    DIRETRIZES DE ESCALA:
+    1. DISTRIBUIÇÃO EQUITATIVA: Alterne os funcionários para que todos trabalhem aproximadamente a mesma quantidade de dias.
+    2. REQUISITOS DE AMBIENTE: Respeite rigorosamente a quantidade de pessoas por categoria definida no JSON de cada ambiente.
+    3. EXCLUSIVIDADE: Um funcionário não pode estar em dois lugares no mesmo dia.
+    4. RESTRIÇÕES DE SEGURANÇA (isRestricted: true): Funcionários marcados como restritos NUNCA podem trabalhar sozinhos em sua categoria num ambiente. Eles precisam de pelo menos um colega da mesma categoria sem restrição no mesmo local e dia.
+    5. FERIADOS E DOMINGOS: Trate os dias marcados em 'specialDays' com atenção, mantendo a escala conforme os requisitos do ambiente.
 
-    REGRAS PARA FUNCIONÁRIOS COM RESTRIÇÃO (isRestricted: true):
-    - Um funcionário com restrição NÃO pode trabalhar sozinho em sua categoria.
-    - Se escalar um 'Restricted', você DEVE escalar junto outro funcionário da mesma categoria SEM restrição.
-    - Dois funcionários com restrição não podem trabalhar juntos no mesmo ambiente/categoria/dia.
-    
-    Retorne APENAS um JSON no formato: { "entries": [ { "date": "YYYY-MM-DD", "employeeId": "...", "environmentId": "...", "categoryId": "..." } ] }
+    FORMATO DE SAÍDA:
+    Retorne estritamente um JSON válido seguindo o esquema fornecido. Não inclua explicações ou markdown.
   `;
 
   const prompt = `
-    Dados Atuais:
-    - Categorias: ${JSON.stringify(categories)}
-    - Colaboradores: ${JSON.stringify(employees)}
-    - Ambientes: ${JSON.stringify(environments)}
-    - Dias Especiais: ${JSON.stringify(specialDays)}
-    - Mês Alvo: ${month}
+    DADOS PARA PROCESSAMENTO:
+    - Mês: ${month}
+    - Categorias Disponíveis: ${JSON.stringify(categories)}
+    - Lista de Funcionários: ${JSON.stringify(employees)}
+    - Postos de Trabalho: ${JSON.stringify(environments)}
+    - Dias Especiais/Feriados: ${JSON.stringify(specialDays)}
 
-    Gere a escala completa respeitando a alternância para evitar repetições excessivas.
+    Gere a escala completa para todos os dias do mês ${month}.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: prompt,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -57,7 +55,7 @@ export const generateScheduleWithAI = async (
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  date: { type: Type.STRING },
+                  date: { type: Type.STRING, description: "Data no formato YYYY-MM-DD" },
                   employeeId: { type: Type.STRING },
                   environmentId: { type: Type.STRING },
                   categoryId: { type: Type.STRING }
@@ -71,10 +69,28 @@ export const generateScheduleWithAI = async (
       }
     });
 
-    const result = JSON.parse(response.text || '{"entries": []}');
+    const text = response.text;
+    if (!text) {
+      throw new Error("A IA retornou uma resposta vazia. Verifique sua cota ou conexão.");
+    }
+
+    const result = JSON.parse(text);
+    if (!result.entries || !Array.isArray(result.entries)) {
+      throw new Error("O formato dos dados gerados pela IA é inválido.");
+    }
+
     return result.entries;
-  } catch (error) {
-    console.error("Erro Gemini:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Erro detalhado do Gemini:", error);
+    
+    if (error.message?.includes("API_KEY_INVALID")) {
+      throw new Error("Chave de API inválida ou expirada.");
+    }
+    
+    if (error.message?.includes("429")) {
+      throw new Error("Limite de requisições da IA atingido. Aguarde um minuto.");
+    }
+
+    throw new Error(error.message || "Falha inesperada ao processar a escala.");
   }
 };
