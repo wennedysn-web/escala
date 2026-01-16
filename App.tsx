@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -62,7 +63,6 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiError, setApiError] = useState(false);
-  const [dbApiKey, setDbApiKey] = useState<string | null>(null);
 
   useEffect(() => {
     const localSess = localStorage.getItem('escala_session');
@@ -90,29 +90,18 @@ const App: React.FC = () => {
     const checkApiKey = async () => {
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey && !dbApiKey) {
+        if (!hasKey) {
           setApiError(true);
         }
       }
     };
     checkApiKey();
-  }, [dbApiKey]);
+  }, []);
 
   const loadInitialData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data: configData } = await supabase
-        .from('settings_escala')
-        .select('value')
-        .eq('id', 'gemini_api_key')
-        .single();
-      
-      if (configData?.value) {
-        setDbApiKey(configData.value);
-        setApiError(false);
-      }
-
       const [cats, emps, envs, days, schs] = await Promise.all([
         supabase.from('categories_escala').select('*').order('name'),
         supabase.from('employees').select('*').order('name'),
@@ -206,8 +195,7 @@ const App: React.FC = () => {
         state.categories,
         state.employees,
         state.environments,
-        state.specialDays,
-        dbApiKey || undefined
+        state.specialDays
       );
       
       if (!entries || entries.length === 0) {
@@ -377,7 +365,6 @@ const App: React.FC = () => {
               error={error} 
               apiError={apiError}
               onSelectKey={handleSelectApiKey}
-              dbApiKey={dbApiKey}
             />
           )}
           {activeTab === 'setup' && (
@@ -387,7 +374,6 @@ const App: React.FC = () => {
               onReset={resetDatabase} 
               error={error} 
               onSelectKey={handleSelectApiKey}
-              dbApiKey={dbApiKey}
             />
           )}
           {activeTab === 'calendar' && (
@@ -418,6 +404,21 @@ const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.Reac
   <button onClick={onClick} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 active:scale-95' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
     {icon} <span>{label}</span>
   </button>
+);
+
+/**
+ * StatCard component to fix the "Cannot find name 'StatCard'" errors.
+ */
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number | string; color: string }> = ({ icon, label, value, color }) => (
+  <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-800 shadow-sm flex flex-col gap-6 transition-all hover:shadow-xl hover:border-slate-700 bg-slate-900/50">
+    <div className={`w-16 h-16 ${color} rounded-[24px] flex items-center justify-center shadow-inner`}>
+      {icon}
+    </div>
+    <div>
+      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
+      <p className="text-4xl font-black text-slate-50 mt-1">{value}</p>
+    </div>
+  </div>
 );
 
 const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
@@ -490,7 +491,7 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
   );
 };
 
-const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void; dbApiKey: string | null }> = ({ state, onGenerate, loading, error, apiError, onSelectKey, dbApiKey }) => (
+const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void }> = ({ state, onGenerate, loading, error, apiError, onSelectKey }) => (
   <div className="space-y-10">
     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-slate-900 p-10 rounded-[40px] shadow-sm border border-slate-800">
       <div className="flex items-center gap-4">
@@ -498,11 +499,6 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
           <h2 className="text-4xl font-black text-slate-50">Bem-vindo</h2>
           <p className="text-slate-400 font-bold mt-1">Gerencie as escalas de domingos e feriados.</p>
         </div>
-        {dbApiKey && (
-          <div className="hidden sm:flex items-center gap-2 bg-emerald-900/20 text-emerald-500 px-4 py-2 rounded-2xl border border-emerald-900/50 text-[10px] font-black uppercase tracking-widest">
-            <ShieldCheck size={14} /> Chave Master Ativa
-          </div>
-        )}
       </div>
       <button onClick={onGenerate} disabled={loading} className="flex items-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-xl active:scale-95 disabled:opacity-50">
         <CalendarCheck size={24} /> Gerar Escala Mensal
@@ -516,7 +512,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
         </div>
         <div className="flex-1 space-y-2 text-center md:text-left">
           <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">Problema com API Key</h3>
-          <p className="text-slate-300 font-medium text-balance">Não validamos a chave de IA. Se cadastrou via SQL, verifique se está correta.</p>
+          <p className="text-slate-300 font-medium text-balance">Não foi possível detectar uma Chave de API ativa no ambiente Studio.</p>
           <div className="pt-2">
              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline text-xs font-bold flex items-center justify-center md:justify-start gap-1">
                <Info size={14}/> Faturamento da API
@@ -545,17 +541,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
   </div>
 );
 
-const StatCard: React.FC<any> = ({ icon, label, value, color }) => (
-  <div className="bg-slate-900 p-8 rounded-[40px] shadow-sm border border-slate-800 flex items-center gap-6">
-    <div className={`p-5 ${color} rounded-[28px]`}>{icon}</div>
-    <div>
-      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
-      <p className="text-3xl font-black text-slate-50">{value}</p>
-    </div>
-  </div>
-);
-
-const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void; dbApiKey: string | null }> = ({ state, loadData, onReset, error, onSelectKey, dbApiKey }) => {
+const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void }> = ({ state, loadData, onReset, error, onSelectKey }) => {
   const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day' | 'sys'>('cat');
   const [loading, setLoading] = useState(false);
 
@@ -621,17 +607,11 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                   <h3 className="text-2xl font-black uppercase tracking-tight">Chave da Inteligência Artificial</h3>
                 </div>
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 p-4 bg-slate-900 border border-slate-700 rounded-2xl">
-                    <div className={`w-3 h-3 rounded-full ${dbApiKey ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-600'}`}></div>
-                    <span className="text-sm font-bold text-slate-300">
-                      Status da Chave no Supabase: {dbApiKey ? 'Ativa' : 'Não encontrada'}
-                    </span>
-                  </div>
-                  <p className="text-slate-400 font-bold max-w-xl text-balance">Chave configurada via banco. Use uma pessoal temporária se necessário.</p>
+                  <p className="text-slate-400 font-bold max-w-xl text-balance">Para o funcionamento correto da geração de escalas, é necessário vincular uma chave de API do Gemini Studio (GCP Paid Project).</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button onClick={onSelectKey} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3">
-                    <RotateCw size={20} /> Selecionar Chave Alternativa
+                    <RotateCw size={20} /> Vincular/Trocar Chave de API
                   </button>
                   <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-8 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-2xl font-bold hover:bg-slate-700 transition-all">
                     <ExternalLink size={18} /> Ver Faturamento
@@ -700,11 +680,11 @@ const EmployeeSetup: React.FC<any> = ({ employees, categories, onAdd, onDel }) =
         <span className="text-xs font-black text-slate-400 group-hover:text-slate-200 uppercase tracking-tight">Colaborador Auxiliar (Somente Escala Restrita)</span>
       </label>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {employees.map((e: any) => (
+        {employees.map((e: Employee) => (
           <div key={e.id} className="p-6 bg-slate-800/50 border border-slate-800 rounded-[28px] flex justify-between items-center">
             <div>
               <p className="font-black text-slate-100 flex items-center gap-2 text-lg">{e.name} {e.isRestricted && <ShieldAlert size={16} className="text-red-500"/>}</p>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">{categories.find((c: any) => c.id === e.categoryId)?.name}</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">{categories.find((c: Category) => c.id === e.categoryId)?.name}</p>
             </div>
             <button onClick={() => onDel(e.id)} className="text-red-400 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
           </div>
@@ -724,7 +704,7 @@ const EnvironmentSetup: React.FC<any> = ({ environments, categories, onAdd, onDe
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do Posto/Ambiente" className="w-full bg-slate-800 border border-slate-700 px-6 py-4 rounded-[20px] text-white font-bold outline-none" />
           <div className="bg-slate-950/50 p-6 rounded-[32px] space-y-4 border border-slate-800">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requisitos Mínimos:</p>
-            {categories.map((c: any) => (
+            {categories.map((c: Category) => (
               <div key={c.id} className="flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-300">{c.name}</span>
                 <input type="number" min="0" value={reqs[c.id] || 0} onChange={e => setReqs({...reqs, [c.id]: parseInt(e.target.value)||0})} className="w-16 py-2 bg-slate-800 border border-slate-700 rounded-xl text-center font-black text-white shadow-sm" />
@@ -734,14 +714,14 @@ const EnvironmentSetup: React.FC<any> = ({ environments, categories, onAdd, onDe
           <button onClick={() => { if(name){ onAdd(name, reqs); setName(''); setReqs({}); } }} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-5 rounded-[24px] font-black transition-all border border-slate-700">Salvar Posto</button>
         </div>
         <div className="space-y-4">
-          {environments.map((env: any) => (
+          {environments.map((env: Environment) => (
             <div key={env.id} className="p-6 bg-slate-800/50 border border-slate-800 rounded-[32px] flex justify-between items-start">
               <div className="space-y-2">
                 <p className="font-black text-slate-100 text-lg">{env.name}</p>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(env.requirements).map(([cid, qty]: any) => qty > 0 && (
                     <div key={cid} className="text-[9px] font-black bg-slate-900 border border-slate-700 px-3 py-1 rounded-lg text-slate-400 shadow-sm">
-                      {categories.find((c: any) => c.id === cid)?.name}: {qty}
+                      {categories.find((c: Category) => c.id === cid)?.name}: {qty}
                     </div>
                   ))}
                 </div>
@@ -771,7 +751,7 @@ const DaySetup: React.FC<any> = ({ days, onAdd, onDel }) => {
         <button onClick={() => { if(date && name){ onAdd(date, name, type); setDate(''); setName(''); } }} className="bg-purple-600 hover:bg-purple-700 text-white rounded-[20px] font-black shadow-lg">Registrar</button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {days.map((d: any) => (
+        {days.map((d: SpecialDay) => (
           <div key={d.date} className="p-6 bg-slate-800/50 border border-slate-800 rounded-[28px] flex justify-between items-center shadow-sm">
             <div className="flex items-center gap-4">
               <div className="text-purple-400"><CalendarDays size={24}/></div>
@@ -802,7 +782,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
         <div className="flex items-center gap-6">
           <button onClick={() => onMonthChange(-1)} className="p-4 bg-slate-800 border border-slate-700 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronLeft/></button>
           <h2 className="text-3xl font-black text-slate-50 capitalize min-w-[200px] text-center">{monthLabel}</h2>
-          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-800 border border-slate-800 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronRight/></button>
+          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-800 border border-slate-700 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronRight/></button>
         </div>
         <button onClick={onGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-lg transition-all flex items-center gap-3">
            <CalendarCheck size={24} /> Otimizar Escala via IA
@@ -839,9 +819,8 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                 </div>
                 
                 <div className="space-y-6 flex-1">
-                  {state.environments.map(env => {
+                  {state.environments.map((env: Environment) => {
                     const envEntries = dayEntries.filter((e: any) => e.environmentId === env.id);
-                    /* Fix: Added explicit any type cast to v to resolve comparison error with unknown type */
                     const hasReqs = Object.values(env.requirements).some((v: any) => v > 0);
                     if (!hasReqs && envEntries.length === 0) return null;
 
@@ -853,12 +832,12 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                               <button className="text-slate-600 hover:text-blue-500 transition-colors"><UserPlus size={14}/></button>
                               <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-30 p-2">
                                 <p className="text-[8px] font-black text-slate-500 uppercase p-2 border-b border-slate-700 mb-1">Adicionar Restrito</p>
-                                {state.employees.filter(emp => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id)).length === 0 ? (
+                                {state.employees.filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id)).length === 0 ? (
                                   <p className="text-[10px] text-slate-600 p-2 italic">Nenhum disponível</p>
                                 ) : (
                                   state.employees
-                                    .filter(emp => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id))
-                                    .map(emp => (
+                                    .filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id))
+                                    .map((emp: Employee) => (
                                       <button 
                                         key={emp.id}
                                         onClick={() => onAddRestricted(specialDay.date, env.id, emp.categoryId, emp.id)}
@@ -874,7 +853,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                          
                          <div className="space-y-2">
                            {envEntries.map((e: any) => {
-                             const emp = state.employees.find((emp: any) => emp.id === e.employeeId);
+                             const emp = state.employees.find((emp: Employee) => emp.id === e.employeeId);
                              return (
                                <div key={e.employeeId} className="group relative bg-slate-800/80 p-3 rounded-2xl border border-slate-700 hover:border-blue-600 transition-all flex items-center justify-between">
                                   <div className="flex-1 min-w-0 pr-2">
@@ -883,7 +862,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                                       {emp?.isRestricted && <ShieldAlert size={12} className="text-red-500 shrink-0"/>}
                                     </p>
                                     <p className="text-[8px] font-black text-slate-500 uppercase tracking-wider group-hover:text-blue-400">
-                                      {state.categories.find(c => c.id === e.categoryId)?.name}
+                                      {state.categories.find((c: Category) => c.id === e.categoryId)?.name}
                                     </p>
                                   </div>
                                   <div className="flex items-center gap-1">
@@ -892,8 +871,8 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                                        <button className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-blue-400 transition-all"><RotateCw size={12}/></button>
                                        <div className="hidden group-hover/swap:block absolute right-0 top-full mt-1 w-40 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-40 p-1">
                                           {state.employees
-                                            .filter(x => x.categoryId === e.categoryId && !dayEntries.some((de: any) => de.employeeId === x.id))
-                                            .map(x => (
+                                            .filter((x: Employee) => x.categoryId === e.categoryId && !dayEntries.some((de: any) => de.employeeId === x.id))
+                                            .map((x: Employee) => (
                                               <button key={x.id} onClick={() => onSwap(specialDay.date, e.employeeId, x.id)} className="w-full text-left p-2 hover:bg-blue-600 rounded-lg text-[10px] font-bold truncate transition-all">
                                                 {x.name}
                                               </button>
