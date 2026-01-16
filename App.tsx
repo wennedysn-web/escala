@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -340,7 +341,6 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
         </form>
         
         <div className="pt-6 border-t border-slate-50 text-center space-y-2">
-           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Login: admin | Senha: tododia</span>
            <p className="text-[9px] text-slate-300 font-medium">Versão 3.0 Stable</p>
         </div>
       </div>
@@ -470,6 +470,7 @@ const CategorySetup: React.FC<any> = ({ categories, onAdd, onDel }) => {
         {categories.map((c: any) => (
           <div key={c.id} className="group flex justify-between items-center p-5 bg-slate-50/50 border border-slate-100 rounded-[24px] hover:bg-white hover:shadow-xl transition-all">
             <span className="font-bold text-slate-700">{c.name}</span>
+            {/* Fix: changed onDel(id) to onDel(c.id) to resolve the undefined 'id' error */}
             <button onClick={() => onDel(c.id)} className="text-slate-200 hover:text-red-500 transition-colors p-2"><Trash2 size={18}/></button>
           </div>
         ))}
