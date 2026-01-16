@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./types";
 
@@ -8,7 +9,11 @@ export const generateScheduleWithAI = async (
   environments: Environment[],
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
-  // A chave é obtida diretamente de process.env.API_KEY conforme as diretrizes
+  // Sempre criamos uma nova instância para garantir o uso da chave mais recente injetada pelo ambiente
+  if (!process.env.API_KEY) {
+    throw new Error("API Key não encontrada. Por favor, selecione uma chave de API válida.");
+  }
+
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const systemInstruction = `
@@ -37,9 +42,10 @@ export const generateScheduleWithAI = async (
   `;
 
   try {
+    // Usando gemini-3-pro-preview para tarefas complexas de raciocínio logístico (STEM/Reasoning)
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      model: "gemini-3-pro-preview",
+      contents: prompt,
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -67,7 +73,7 @@ export const generateScheduleWithAI = async (
 
     const text = response.text;
     if (!text) {
-      throw new Error("A IA retornou uma resposta vazia. Verifique a configuração da sua API Key.");
+      throw new Error("A IA retornou uma resposta vazia. Verifique se a chave de API tem faturamento habilitado.");
     }
 
     const result = JSON.parse(text);
@@ -78,10 +84,16 @@ export const generateScheduleWithAI = async (
     return result.entries;
   } catch (error: any) {
     console.error("Erro detalhado do Gemini:", error);
-    // Se a mensagem for sobre API Key, damos uma instrução mais clara
-    if (error.message?.includes("API Key")) {
-      throw new Error("Erro de Autenticação: A chave de API não foi reconhecida ou está ausente no ambiente.");
+    
+    // Tratamento específico para erros comuns de chave de API no navegador
+    if (error.message?.includes("API Key") || error.message?.includes("API_KEY_INVALID") || error.message?.includes("403")) {
+      throw new Error("Problema com a Chave de API: A chave é inválida ou o projeto não possui faturamento ativo.");
     }
+    
+    if (error.message?.includes("Requested entity was not found")) {
+      throw new Error("Projeto da API Key não encontrado. Tente selecionar outra chave.");
+    }
+
     throw new Error(error.message || "Falha ao processar a escala via IA.");
   }
 };

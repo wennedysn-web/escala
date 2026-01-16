@@ -20,11 +20,21 @@ import {
   Settings,
   UserCheck,
   User,
+  Key,
   ExternalLink
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+
+// Fix: Estendendo a interface AIStudio em vez de redeclarar a propriedade aistudio no Window
+// Isso resolve o erro de conflito de modificadores e tipos ("Property 'aistudio' must be of type 'AIStudio'")
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+}
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -44,6 +54,23 @@ const App: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      // Usamos cast para AIStudio se necessário para garantir o acesso aos métodos
+      const aistudio = (window as any).aistudio as AIStudio | undefined;
+      if (aistudio?.hasSelectedApiKey) {
+        try {
+          const has = await aistudio.hasSelectedApiKey();
+          setHasApiKey(has);
+        } catch (e) {
+          console.warn("Could not check API Key status", e);
+        }
+      }
+    };
+    checkKey();
+  }, []);
 
   useEffect(() => {
     const localSess = localStorage.getItem('escala_session');
@@ -120,6 +147,16 @@ const App: React.FC = () => {
     setSession(null);
   };
 
+  const handleOpenKeySelector = async () => {
+    const aistudio = (window as any).aistudio as AIStudio | undefined;
+    if (aistudio?.openSelectKey) {
+      await aistudio.openSelectKey();
+      // Assume-se sucesso após abertura do diálogo conforme diretrizes (para evitar race condition)
+      setHasApiKey(true);
+      setError(null);
+    }
+  };
+
   const handleGenerateSchedule = async () => {
     if (state.employees.length === 0 || state.environments.length === 0) {
       setError("Cadastre a equipe e os ambientes nas configurações primeiro.");
@@ -155,7 +192,12 @@ const App: React.FC = () => {
       }));
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Ocorreu um erro na IA. Tente novamente em instantes.");
+      if (err.message?.includes("API Key") || err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+        setError("Erro de Autenticação: Por favor, clique em 'Ativar IA' para selecionar uma chave válida.");
+      } else {
+        setError(err.message || "Ocorreu um erro na IA. Tente novamente em instantes.");
+      }
     } finally {
       setLoading(false);
     }
@@ -220,7 +262,7 @@ const App: React.FC = () => {
         )}
         
         <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
+          {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} onOpenKey={handleOpenKeySelector} hasKey={hasApiKey} loading={loading} error={error} />}
           {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} />}
           {activeTab === 'calendar' && (
             <CalendarView 
@@ -233,6 +275,8 @@ const App: React.FC = () => {
               }}
               onSwap={swapEmployee}
               onGenerate={handleGenerateSchedule}
+              onOpenKey={handleOpenKeySelector}
+              hasKey={hasApiKey}
               loading={loading}
             />
           )}
@@ -345,7 +389,7 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
   );
 };
 
-const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null }> = ({ state, onGenerate, loading, error }) => (
+const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; onOpenKey: () => void; hasKey: boolean; loading: boolean; error: string | null }> = ({ state, onGenerate, onOpenKey, hasKey, loading, error }) => (
   <div className="space-y-10">
     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-10 rounded-[40px] shadow-sm border border-slate-200/50">
       <div>
@@ -357,6 +401,12 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
           <CalendarCheck size={24} className="group-hover:rotate-12 transition-transform" /> 
           Gerar Nova Escala
         </button>
+        {!hasKey && (
+          <button onClick={onOpenKey} className="group flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-2xl shadow-amber-500/20 active:scale-95">
+            <Key size={24} className="group-hover:rotate-12 transition-transform" /> 
+            Ativar IA (Selecionar Chave)
+          </button>
+        )}
       </div>
     </div>
     
@@ -366,6 +416,14 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
         <div>
           <p className="font-bold">Aviso de Configuração:</p>
           <p className="mt-1 opacity-90">{error}</p>
+          {!hasKey && (
+            <div className="mt-3 flex flex-col gap-2">
+              <button onClick={onOpenKey} className="text-xs font-black uppercase tracking-widest text-amber-800 bg-amber-200/50 px-4 py-2 rounded-lg w-fit hover:bg-amber-300 transition-colors">Selecionar Chave de API</button>
+              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] text-amber-900/60 underline flex items-center gap-1">
+                Ver documentação de faturamento <ExternalLink size={10}/>
+              </a>
+            </div>
+          )}
         </div>
       </div>
     )}
@@ -593,7 +651,7 @@ const DaySetup: React.FC<any> = ({ days, onAdd, onDel }) => {
   );
 };
 
-const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwap, onGenerate, loading }) => {
+const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwap, onGenerate, onOpenKey, hasKey, loading }) => {
   const [y, m] = currentMonth.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -607,9 +665,16 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
           <h2 className="text-3xl font-black text-slate-900 capitalize min-w-[220px] text-center tracking-tight leading-none">{monthLabel}</h2>
           <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-90"><ChevronRight size={24}/></button>
         </div>
-        <button onClick={onGenerate} disabled={loading} className="w-full lg:w-auto bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-2xl shadow-blue-500/30 active:scale-95 transition-all text-lg flex items-center justify-center gap-3">
-           <CalendarCheck size={24} /> Otimizar Escala via IA
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+          {!hasKey && (
+            <button onClick={onOpenKey} className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-4 rounded-[20px] font-black shadow-lg shadow-amber-500/20 transition-all text-sm flex items-center justify-center gap-2">
+              <Key size={18} /> Ativar IA
+            </button>
+          )}
+          <button onClick={onGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-2xl shadow-blue-500/30 active:scale-95 transition-all text-lg flex items-center justify-center gap-3">
+             <CalendarCheck size={24} /> Otimizar Escala via IA
+          </button>
+        </div>
       </header>
 
       {entries.length === 0 ? (
