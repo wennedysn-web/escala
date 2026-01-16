@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -27,7 +26,8 @@ import {
   Database,
   Code,
   KeyRound,
-  ShieldCheck
+  ShieldCheck,
+  UserPlus
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -90,7 +90,6 @@ const App: React.FC = () => {
     const checkApiKey = async () => {
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        // Se temos uma chave no banco, não forçamos o erro de API imediatamente
         if (!hasKey && !dbApiKey) {
           setApiError(true);
         }
@@ -103,7 +102,6 @@ const App: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // Buscar chave de API do banco primeiro
       const { data: configData } = await supabase
         .from('settings_escala')
         .select('value')
@@ -155,7 +153,6 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error("Erro ao carregar dados:", err);
-      // O erro de 'single' na chave pode ser ignorado se a chave não existir
       if (!err.message?.includes('JSON object requested, but 0 rows were returned')) {
         setError(handleSupabaseError(err));
       }
@@ -166,7 +163,7 @@ const App: React.FC = () => {
 
   const handleSupabaseError = (err: any) => {
     if (err.message?.includes('row-level security')) {
-      return "ERRO DE PERMISSÃO: O Supabase bloqueou a gravação. Você precisa desativar o RLS ou criar políticas de acesso para as tabelas.";
+      return "ERRO DE PERMISSÃO: O Supabase bloqueou a operação. Verifique as políticas RLS.";
     }
     return err.message || "Erro inesperado no banco de dados.";
   };
@@ -204,7 +201,6 @@ const App: React.FC = () => {
     setApiError(false);
 
     try {
-      // Passa a chave do banco (se houver) para o serviço
       const entries = await generateScheduleWithAI(
         currentMonth,
         state.categories,
@@ -241,7 +237,7 @@ const App: React.FC = () => {
       const msg = err.message || "";
       if (msg.includes('403') || msg.includes('API key') || msg.includes('leaked') || msg.includes('PERMISSION_DENIED') || msg.includes('Requested entity was not found')) {
         setApiError(true);
-        setError("Erro na API Gemini: A chave atual não funcionou. Verifique se a chave no Supabase está correta ou selecione uma nova.");
+        setError("Erro na API Gemini: A chave atual não funcionou.");
       } else {
         setError(handleSupabaseError(err));
       }
@@ -263,6 +259,43 @@ const App: React.FC = () => {
     const { error } = await supabase.from('schedules')
       .update({ employee_id: newEmpId })
       .match({ date, employee_id: oldEmpId, month_key: currentMonth });
+    
+    if (error) setError(handleSupabaseError(error));
+  };
+
+  const addRestrictedEmployee = async (date: string, envId: string, categoryId: string, empId: string) => {
+    const newEntry: ScheduleEntry = {
+      date,
+      environmentId: envId,
+      categoryId,
+      employeeId: empId
+    };
+
+    setState(prev => {
+      const current = [...(prev.schedules[currentMonth] || [])];
+      return { ...prev, schedules: { ...prev.schedules, [currentMonth]: [...current, newEntry] } };
+    });
+
+    const { error } = await supabase.from('schedules').insert([{
+      date,
+      employee_id: empId,
+      environment_id: envId,
+      category_id: categoryId,
+      month_key: currentMonth
+    }]);
+
+    if (error) setError(handleSupabaseError(error));
+  };
+
+  const removeEntry = async (date: string, envId: string, empId: string) => {
+    setState(prev => {
+      const current = [...(prev.schedules[currentMonth] || [])].filter(e => !(e.date === date && e.environmentId === envId && e.employeeId === empId));
+      return { ...prev, schedules: { ...prev.schedules, [currentMonth]: current } };
+    });
+
+    const { error } = await supabase.from('schedules')
+      .delete()
+      .match({ date, environment_id: envId, employee_id: empId, month_key: currentMonth });
     
     if (error) setError(handleSupabaseError(error));
   };
@@ -329,7 +362,7 @@ const App: React.FC = () => {
               <div className="w-16 h-16 border-4 border-slate-800 border-t-blue-600 rounded-full animate-spin"></div>
               <div className="text-center">
                 <p className="font-black text-xl text-slate-50">Processando...</p>
-                <p className="text-slate-400 text-sm mt-1 font-medium">Aguarde a resposta da Inteligência Artificial.</p>
+                <p className="text-slate-400 text-sm mt-1 font-medium text-balance max-w-xs mx-auto">Aguarde a resposta da Inteligência Artificial ou do Banco de Dados.</p>
               </div>
             </div>
           </div>
@@ -367,6 +400,8 @@ const App: React.FC = () => {
                 setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
               }}
               onSwap={swapEmployee}
+              onAddRestricted={addRestrictedEmployee}
+              onRemove={removeEntry}
               onGenerate={handleGenerateSchedule}
               loading={loading}
               error={error}
@@ -481,10 +516,10 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
         </div>
         <div className="flex-1 space-y-2 text-center md:text-left">
           <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">Problema com API Key</h3>
-          <p className="text-slate-300 font-medium">Não conseguimos validar a chave de Inteligência Artificial. Se você cadastrou a chave via SQL, verifique se está correta.</p>
+          <p className="text-slate-300 font-medium text-balance">Não validamos a chave de IA. Se cadastrou via SQL, verifique se está correta.</p>
           <div className="pt-2">
              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline text-xs font-bold flex items-center justify-center md:justify-start gap-1">
-               <Info size={14}/> Saiba mais sobre faturamento da API
+               <Info size={14}/> Faturamento da API
              </a>
           </div>
         </div>
@@ -528,7 +563,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
     setLoading(true);
     const { error } = await supabase.from(table).insert([payload]);
     if (error) {
-      alert("Erro ao salvar no Supabase: " + error.message);
+      alert("Erro ao salvar: " + error.message);
       loadData();
     } else {
       loadData();
@@ -561,9 +596,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
             <Database size={20} />
             <span>CORREÇÃO DO BANCO DE DADOS NECESSÁRIA</span>
           </div>
-          <p className="text-sm text-slate-300">
-            Você precisa liberar o acesso no console do Supabase (SQL Editor) executando o comando abaixo:
-          </p>
+          <p className="text-sm text-slate-300">Libere o acesso no console do Supabase (SQL Editor):</p>
           <div className="bg-black/40 p-4 rounded-xl font-mono text-xs text-blue-400 overflow-x-auto select-all">
             ALTER TABLE categories_escala DISABLE ROW LEVEL SECURITY;
             ALTER TABLE employees DISABLE ROW LEVEL SECURITY;
@@ -591,22 +624,17 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                   <div className="flex items-center gap-2 p-4 bg-slate-900 border border-slate-700 rounded-2xl">
                     <div className={`w-3 h-3 rounded-full ${dbApiKey ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-600'}`}></div>
                     <span className="text-sm font-bold text-slate-300">
-                      Status da Chave no Supabase: {dbApiKey ? 'Carregada e Ativa' : 'Não encontrada'}
+                      Status da Chave no Supabase: {dbApiKey ? 'Ativa' : 'Não encontrada'}
                     </span>
                   </div>
-                  <p className="text-slate-400 font-bold max-w-xl">
-                    Sua chave mestre foi configurada no banco de dados. Caso deseje usar uma chave pessoal temporária de outra conta, use o botão abaixo.
-                  </p>
+                  <p className="text-slate-400 font-bold max-w-xl text-balance">Chave configurada via banco. Use uma pessoal temporária se necessário.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <button 
-                    onClick={onSelectKey}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3"
-                  >
+                  <button onClick={onSelectKey} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3">
                     <RotateCw size={20} /> Selecionar Chave Alternativa
                   </button>
                   <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-8 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-2xl font-bold hover:bg-slate-700 transition-all">
-                    <ExternalLink size={18} /> Ver Documentação de Faturamento
+                    <ExternalLink size={18} /> Ver Faturamento
                   </a>
                 </div>
              </div>
@@ -616,15 +644,8 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                   <ShieldAlert size={32} />
                   <h3 className="text-2xl font-black uppercase tracking-tight">Zona de Perigo</h3>
                 </div>
-                <p className="text-slate-400 font-bold max-w-xl">
-                  Esta ação irá apagar permanentemente todos os dados de cadastro e escalas. 
-                  O sistema voltará ao estado original, mantendo apenas o seu login.
-                </p>
-                <button 
-                  onClick={onReset}
-                  className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-red-600/20 transition-all flex items-center justify-center gap-3"
-                >
-                  <Trash size={20} /> Limpar Toda a Base de Dados
+                <button onClick={onReset} className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-red-600/20 transition-all flex items-center justify-center gap-3">
+                  <Trash size={20} /> Limpar Base de Dados
                 </button>
              </div>
           </div>
@@ -676,7 +697,7 @@ const EmployeeSetup: React.FC<any> = ({ employees, categories, onAdd, onDel }) =
       </div>
       <label className="flex items-center gap-4 cursor-pointer group">
         <input type="checkbox" checked={res} onChange={e => setRes(e.target.checked)} className="w-5 h-5 accent-blue-600" />
-        <span className="text-xs font-black text-slate-400 group-hover:text-slate-200 uppercase">Colaborador com Restrição (Nunca trabalha só)</span>
+        <span className="text-xs font-black text-slate-400 group-hover:text-slate-200 uppercase tracking-tight">Colaborador Auxiliar (Somente Escala Restrita)</span>
       </label>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {employees.map((e: any) => (
@@ -702,7 +723,7 @@ const EnvironmentSetup: React.FC<any> = ({ environments, categories, onAdd, onDe
         <div className="space-y-6">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do Posto/Ambiente" className="w-full bg-slate-800 border border-slate-700 px-6 py-4 rounded-[20px] text-white font-bold outline-none" />
           <div className="bg-slate-950/50 p-6 rounded-[32px] space-y-4 border border-slate-800">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requisitos de Equipe:</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requisitos Mínimos:</p>
             {categories.map((c: any) => (
               <div key={c.id} className="flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-300">{c.name}</span>
@@ -767,9 +788,9 @@ const DaySetup: React.FC<any> = ({ days, onAdd, onDel }) => {
   );
 };
 
-const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwap, onGenerate, loading, error }) => {
+const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwap, onAddRestricted, onRemove, onGenerate, loading, error }) => {
   const monthLabel = new Date(currentMonth + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  const entries = state.schedules[currentMonth] || [];
+  const schedules = state.schedules[currentMonth] || [];
 
   const displayDays = state.specialDays
     .filter((d: SpecialDay) => d.date.startsWith(currentMonth))
@@ -781,7 +802,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
         <div className="flex items-center gap-6">
           <button onClick={() => onMonthChange(-1)} className="p-4 bg-slate-800 border border-slate-700 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronLeft/></button>
           <h2 className="text-3xl font-black text-slate-50 capitalize min-w-[200px] text-center">{monthLabel}</h2>
-          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-800 border border-slate-700 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronRight/></button>
+          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-800 border border-slate-800 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><ChevronRight/></button>
         </div>
         <button onClick={onGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-lg transition-all flex items-center gap-3">
            <CalendarCheck size={24} /> Otimizar Escala via IA
@@ -798,54 +819,101 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
         <div className="bg-slate-900 p-24 rounded-[60px] border-2 border-dashed border-slate-800 text-center space-y-4">
           <CalendarDays size={64} className="mx-auto text-slate-700" />
           <h3 className="text-2xl font-black text-slate-500">Sem dias citados para {monthLabel}</h3>
-          <p className="text-slate-400 font-bold max-w-md mx-auto">Cadastre os Domingos e Feriados deste mês na aba de Configurações para gerar a escala.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 items-start">
           {displayDays.map((specialDay: SpecialDay) => {
-            const dayEntries = entries.filter((e: any) => e.date === specialDay.date);
+            const dayEntries = schedules.filter((e: any) => e.date === specialDay.date);
             const dateObj = new Date(specialDay.date);
-            const dayNumber = dateObj.getUTCDate();
             
             return (
-              <div key={specialDay.date} className="bg-slate-900 rounded-[40px] p-8 border border-slate-800 shadow-sm flex flex-col hover:shadow-xl transition-all ring-offset-2 ring-blue-900/20 hover:ring-2">
+              <div key={specialDay.date} className="bg-slate-900 rounded-[40px] p-8 border border-slate-800 shadow-sm flex flex-col hover:shadow-xl transition-all h-full">
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex flex-col">
-                    <span className="text-4xl font-black text-slate-50 leading-none">{dayNumber}</span>
+                    <span className="text-4xl font-black text-slate-50 leading-none">{dateObj.getUTCDate()}</span>
                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider mt-1">{dateObj.toLocaleDateString('pt-BR', {weekday: 'long', timeZone: 'UTC'})}</span>
                   </div>
                   <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest text-white shadow-sm ${specialDay.type === 'holiday' ? 'bg-amber-600' : 'bg-blue-600'}`}>
                     {specialDay.name}
                   </span>
                 </div>
-                <div className="space-y-3">
-                  {dayEntries.length === 0 ? (
-                    <p className="text-xs text-slate-600 italic font-bold">Escala não gerada para este dia.</p>
-                  ) : (
-                    dayEntries.map((e: any) => {
-                      const emp = state.employees.find((emp: any) => emp.id === e.employeeId);
-                      const env = state.environments.find((env: any) => env.id === e.environmentId);
-                      return (
-                        <div key={e.employeeId + e.environmentId} className="group relative bg-slate-800 p-4 rounded-[20px] border border-slate-700 hover:bg-blue-600 hover:border-blue-700 hover:text-white transition-all shadow-sm">
-                          <p className="text-[12px] font-black text-slate-100 group-hover:text-white truncate pr-2">{emp?.name || 'Vazio'}</p>
-                          <p className="text-[9px] font-black text-slate-500 group-hover:text-blue-100 mt-0.5 uppercase flex items-center gap-1 tracking-wider"><Building2 size={10}/> {env?.name}</p>
-                          
-                          <div className="opacity-0 group-hover:opacity-100 absolute inset-0 bg-blue-600 rounded-[20px] flex items-center justify-center transition-all">
-                            <select 
-                              className="w-full bg-transparent text-white text-[11px] font-black text-center outline-none cursor-pointer"
-                              value={e.employeeId}
-                              onChange={(ev) => onSwap(specialDay.date, e.employeeId, ev.target.value)}
-                            >
-                              <option disabled value="">Trocar por...</option>
-                              {state.employees.filter((x: any) => x.categoryId === e.categoryId).map((x: any) => (
-                                <option key={x.id} value={x.id} className="text-slate-900">{x.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
+                
+                <div className="space-y-6 flex-1">
+                  {state.environments.map(env => {
+                    const envEntries = dayEntries.filter((e: any) => e.environmentId === env.id);
+                    /* Fix: Added explicit any type cast to v to resolve comparison error with unknown type */
+                    const hasReqs = Object.values(env.requirements).some((v: any) => v > 0);
+                    if (!hasReqs && envEntries.length === 0) return null;
+
+                    return (
+                      <div key={env.id} className="space-y-3 bg-slate-950/40 p-4 rounded-3xl border border-slate-800/50">
+                         <div className="flex items-center justify-between px-1">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1"><Building2 size={12}/> {env.name}</p>
+                            <div className="relative group">
+                              <button className="text-slate-600 hover:text-blue-500 transition-colors"><UserPlus size={14}/></button>
+                              <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-30 p-2">
+                                <p className="text-[8px] font-black text-slate-500 uppercase p-2 border-b border-slate-700 mb-1">Adicionar Restrito</p>
+                                {state.employees.filter(emp => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id)).length === 0 ? (
+                                  <p className="text-[10px] text-slate-600 p-2 italic">Nenhum disponível</p>
+                                ) : (
+                                  state.employees
+                                    .filter(emp => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id))
+                                    .map(emp => (
+                                      <button 
+                                        key={emp.id}
+                                        onClick={() => onAddRestricted(specialDay.date, env.id, emp.categoryId, emp.id)}
+                                        className="w-full text-left p-2 hover:bg-blue-600 hover:text-white rounded-xl text-[11px] font-bold transition-all truncate"
+                                      >
+                                        {emp.name}
+                                      </button>
+                                    ))
+                                )}
+                              </div>
+                            </div>
+                         </div>
+                         
+                         <div className="space-y-2">
+                           {envEntries.map((e: any) => {
+                             const emp = state.employees.find((emp: any) => emp.id === e.employeeId);
+                             return (
+                               <div key={e.employeeId} className="group relative bg-slate-800/80 p-3 rounded-2xl border border-slate-700 hover:border-blue-600 transition-all flex items-center justify-between">
+                                  <div className="flex-1 min-w-0 pr-2">
+                                    <p className="text-[12px] font-black text-slate-100 truncate flex items-center gap-2">
+                                      {emp?.name || '---'}
+                                      {emp?.isRestricted && <ShieldAlert size={12} className="text-red-500 shrink-0"/>}
+                                    </p>
+                                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-wider group-hover:text-blue-400">
+                                      {state.categories.find(c => c.id === e.categoryId)?.name}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => onRemove(specialDay.date, env.id, e.employeeId)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 transition-all"><Trash2 size={12}/></button>
+                                    <div className="relative group/swap">
+                                       <button className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-blue-400 transition-all"><RotateCw size={12}/></button>
+                                       <div className="hidden group-hover/swap:block absolute right-0 top-full mt-1 w-40 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-40 p-1">
+                                          {state.employees
+                                            .filter(x => x.categoryId === e.categoryId && !dayEntries.some((de: any) => de.employeeId === x.id))
+                                            .map(x => (
+                                              <button key={x.id} onClick={() => onSwap(specialDay.date, e.employeeId, x.id)} className="w-full text-left p-2 hover:bg-blue-600 rounded-lg text-[10px] font-bold truncate transition-all">
+                                                {x.name}
+                                              </button>
+                                            ))
+                                          }
+                                       </div>
+                                    </div>
+                                  </div>
+                               </div>
+                             );
+                           })}
+                           {envEntries.length === 0 && (
+                             <div className="p-3 border border-dashed border-slate-800 rounded-2xl text-center">
+                               <p className="text-[9px] font-bold text-slate-700 uppercase italic">Vazio</p>
+                             </div>
+                           )}
+                         </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -869,8 +937,8 @@ const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Localizar..." className="w-full pl-14 pr-6 py-4 bg-slate-900 border-2 border-slate-800 rounded-[24px] outline-none shadow-sm focus:border-blue-600 transition-all text-white font-bold" />
         </div>
       </div>
-      <div className="bg-slate-900 rounded-[40px] border border-slate-800 overflow-hidden shadow-sm">
-        <table className="w-full text-left">
+      <div className="bg-slate-900 rounded-[40px] border border-slate-800 overflow-hidden shadow-sm overflow-x-auto">
+        <table className="w-full text-left min-w-[600px]">
           <thead>
             <tr className="bg-slate-950/30 border-b border-slate-800">
               <th className="p-8 text-[11px] font-black text-slate-400 uppercase tracking-widest">Colaborador</th>
@@ -891,9 +959,9 @@ const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
                 </td>
                 <td className="p-8">
                   {e.isRestricted ? (
-                    <span className="flex items-center gap-2 text-red-400 font-black text-[11px] uppercase bg-red-950/30 px-4 py-2 rounded-xl border border-red-900/50 shadow-sm"><ShieldAlert size={16}/> Restrição</span>
+                    <span className="flex items-center gap-2 text-red-400 font-black text-[11px] uppercase bg-red-950/30 px-4 py-2 rounded-xl border border-red-900/50 shadow-sm shrink-0"><ShieldAlert size={16}/> Auxiliar (Restrito)</span>
                   ) : (
-                    <span className="text-emerald-400 font-black text-[11px] uppercase bg-emerald-950/30 px-4 py-2 rounded-xl border border-emerald-900/50 shadow-sm">Disponível</span>
+                    <span className="text-emerald-400 font-black text-[11px] uppercase bg-emerald-950/30 px-4 py-2 rounded-xl border border-emerald-900/50 shadow-sm">Titular Disponível</span>
                   )}
                 </td>
               </tr>
