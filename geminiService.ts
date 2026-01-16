@@ -8,7 +8,7 @@ export const generateScheduleWithAI = async (
   environments: Environment[],
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
-  // Criamos a instância aqui para garantir que pegamos a chave injetada pelo ambiente no momento da chamada
+  // A chave é obtida diretamente de process.env.API_KEY conforme as diretrizes
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const systemInstruction = `
@@ -67,7 +67,7 @@ export const generateScheduleWithAI = async (
 
     const text = response.text;
     if (!text) {
-      throw new Error("A IA retornou uma resposta vazia.");
+      throw new Error("A IA retornou uma resposta vazia. Verifique a configuração da sua API Key.");
     }
 
     const result = JSON.parse(text);
@@ -78,6 +78,10 @@ export const generateScheduleWithAI = async (
     return result.entries;
   } catch (error: any) {
     console.error("Erro detalhado do Gemini:", error);
+    // Se a mensagem for sobre API Key, damos uma instrução mais clara
+    if (error.message?.includes("API Key")) {
+      throw new Error("Erro de Autenticação: A chave de API não foi reconhecida ou está ausente no ambiente.");
+    }
     throw new Error(error.message || "Falha ao processar a escala via IA.");
   }
 };
