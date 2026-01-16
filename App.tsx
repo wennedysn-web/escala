@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -25,7 +26,8 @@ import {
   Trash,
   Database,
   Code,
-  KeyRound
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -37,7 +39,6 @@ declare global {
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    // Fixed: Made optional to match existing ambient declarations and avoid "identical modifiers" error.
     aistudio?: AIStudio;
   }
 }
@@ -61,6 +62,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiError, setApiError] = useState(false);
+  const [dbApiKey, setDbApiKey] = useState<string | null>(null);
 
   useEffect(() => {
     const localSess = localStorage.getItem('escala_session');
@@ -84,23 +86,35 @@ const App: React.FC = () => {
     }
   }, [session]);
 
-  // Added: Initial check for API key presence as per guidelines
   useEffect(() => {
     const checkApiKey = async () => {
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
+        // Se temos uma chave no banco, não forçamos o erro de API imediatamente
+        if (!hasKey && !dbApiKey) {
           setApiError(true);
         }
       }
     };
     checkApiKey();
-  }, []);
+  }, [dbApiKey]);
 
   const loadInitialData = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Buscar chave de API do banco primeiro
+      const { data: configData } = await supabase
+        .from('settings_escala')
+        .select('value')
+        .eq('id', 'gemini_api_key')
+        .single();
+      
+      if (configData?.value) {
+        setDbApiKey(configData.value);
+        setApiError(false);
+      }
+
       const [cats, emps, envs, days, schs] = await Promise.all([
         supabase.from('categories_escala').select('*').order('name'),
         supabase.from('employees').select('*').order('name'),
@@ -141,7 +155,10 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error("Erro ao carregar dados:", err);
-      setError(handleSupabaseError(err));
+      // O erro de 'single' na chave pode ser ignorado se a chave não existir
+      if (!err.message?.includes('JSON object requested, but 0 rows were returned')) {
+        setError(handleSupabaseError(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -162,7 +179,6 @@ const App: React.FC = () => {
 
   const handleSelectApiKey = async () => {
     try {
-      // Fixed: Safe access using optional chaining
       await window.aistudio?.openSelectKey();
       setApiError(false);
       setError(null);
@@ -188,12 +204,14 @@ const App: React.FC = () => {
     setApiError(false);
 
     try {
+      // Passa a chave do banco (se houver) para o serviço
       const entries = await generateScheduleWithAI(
         currentMonth,
         state.categories,
         state.employees,
         state.environments,
-        state.specialDays
+        state.specialDays,
+        dbApiKey || undefined
       );
       
       if (!entries || entries.length === 0) {
@@ -221,10 +239,9 @@ const App: React.FC = () => {
       alert("Escala gerada com sucesso!");
     } catch (err: any) {
       const msg = err.message || "";
-      // Improved: Handling "Requested entity was not found" and other key errors as per guidelines
       if (msg.includes('403') || msg.includes('API key') || msg.includes('leaked') || msg.includes('PERMISSION_DENIED') || msg.includes('Requested entity was not found')) {
         setApiError(true);
-        setError("Erro na API Gemini: Sua chave de API atual expirou ou foi bloqueada. Você precisa configurar uma chave pessoal.");
+        setError("Erro na API Gemini: A chave atual não funcionou. Verifique se a chave no Supabase está correta ou selecione uma nova.");
       } else {
         setError(handleSupabaseError(err));
       }
@@ -327,6 +344,7 @@ const App: React.FC = () => {
               error={error} 
               apiError={apiError}
               onSelectKey={handleSelectApiKey}
+              dbApiKey={dbApiKey}
             />
           )}
           {activeTab === 'setup' && (
@@ -336,6 +354,7 @@ const App: React.FC = () => {
               onReset={resetDatabase} 
               error={error} 
               onSelectKey={handleSelectApiKey}
+              dbApiKey={dbApiKey}
             />
           )}
           {activeTab === 'calendar' && (
@@ -436,12 +455,19 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
   );
 };
 
-const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void }> = ({ state, onGenerate, loading, error, apiError, onSelectKey }) => (
+const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void; dbApiKey: string | null }> = ({ state, onGenerate, loading, error, apiError, onSelectKey, dbApiKey }) => (
   <div className="space-y-10">
     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-slate-900 p-10 rounded-[40px] shadow-sm border border-slate-800">
-      <div>
-        <h2 className="text-4xl font-black text-slate-50">Bem-vindo</h2>
-        <p className="text-slate-400 font-bold mt-1">Gerencie as escalas de domingos e feriados.</p>
+      <div className="flex items-center gap-4">
+        <div>
+          <h2 className="text-4xl font-black text-slate-50">Bem-vindo</h2>
+          <p className="text-slate-400 font-bold mt-1">Gerencie as escalas de domingos e feriados.</p>
+        </div>
+        {dbApiKey && (
+          <div className="hidden sm:flex items-center gap-2 bg-emerald-900/20 text-emerald-500 px-4 py-2 rounded-2xl border border-emerald-900/50 text-[10px] font-black uppercase tracking-widest">
+            <ShieldCheck size={14} /> Chave Master Ativa
+          </div>
+        )}
       </div>
       <button onClick={onGenerate} disabled={loading} className="flex items-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-xl active:scale-95 disabled:opacity-50">
         <CalendarCheck size={24} /> Gerar Escala Mensal
@@ -454,8 +480,8 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
           <KeyRound size={40} />
         </div>
         <div className="flex-1 space-y-2 text-center md:text-left">
-          <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">API Key Bloqueada</h3>
-          <p className="text-slate-300 font-medium">A chave de inteligência artificial padrão foi desativada. Para continuar gerando escalas, vincule sua própria chave de API.</p>
+          <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">Problema com API Key</h3>
+          <p className="text-slate-300 font-medium">Não conseguimos validar a chave de Inteligência Artificial. Se você cadastrou a chave via SQL, verifique se está correta.</p>
           <div className="pt-2">
              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline text-xs font-bold flex items-center justify-center md:justify-start gap-1">
                <Info size={14}/> Saiba mais sobre faturamento da API
@@ -463,7 +489,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
           </div>
         </div>
         <button onClick={onSelectKey} className="bg-amber-600 hover:bg-amber-700 text-white px-10 py-4 rounded-2xl font-black shadow-lg transition-all whitespace-nowrap">
-          Vincular Minha Chave
+          Vincular Chave Pessoal
         </button>
       </div>
     )}
@@ -494,7 +520,7 @@ const StatCard: React.FC<any> = ({ icon, label, value, color }) => (
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void }> = ({ state, loadData, onReset, error, onSelectKey }) => {
+const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void; dbApiKey: string | null }> = ({ state, loadData, onReset, error, onSelectKey, dbApiKey }) => {
   const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day' | 'sys'>('cat');
   const [loading, setLoading] = useState(false);
 
@@ -544,6 +570,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
             ALTER TABLE environments DISABLE ROW LEVEL SECURITY;
             ALTER TABLE special_days DISABLE ROW LEVEL SECURITY;
             ALTER TABLE schedules DISABLE ROW LEVEL SECURITY;
+            ALTER TABLE settings_escala DISABLE ROW LEVEL SECURITY;
           </div>
         </div>
       )}
@@ -560,15 +587,23 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                   <KeyRound size={32} />
                   <h3 className="text-2xl font-black uppercase tracking-tight">Chave da Inteligência Artificial</h3>
                 </div>
-                <p className="text-slate-400 font-bold max-w-xl">
-                  Se você estiver enfrentando erros de geração (como o erro 403), use o botão abaixo para configurar sua própria chave de API paga.
-                </p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 p-4 bg-slate-900 border border-slate-700 rounded-2xl">
+                    <div className={`w-3 h-3 rounded-full ${dbApiKey ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-600'}`}></div>
+                    <span className="text-sm font-bold text-slate-300">
+                      Status da Chave no Supabase: {dbApiKey ? 'Carregada e Ativa' : 'Não encontrada'}
+                    </span>
+                  </div>
+                  <p className="text-slate-400 font-bold max-w-xl">
+                    Sua chave mestre foi configurada no banco de dados. Caso deseje usar uma chave pessoal temporária de outra conta, use o botão abaixo.
+                  </p>
+                </div>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button 
                     onClick={onSelectKey}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3"
                   >
-                    <RotateCw size={20} /> Alterar Chave API
+                    <RotateCw size={20} /> Selecionar Chave Alternativa
                   </button>
                   <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-8 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-2xl font-bold hover:bg-slate-700 transition-all">
                     <ExternalLink size={18} /> Ver Documentação de Faturamento

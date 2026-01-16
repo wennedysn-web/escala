@@ -7,11 +7,18 @@ export const generateScheduleWithAI = async (
   categories: Category[],
   employees: Employee[],
   environments: Environment[],
-  specialDays: SpecialDay[]
+  specialDays: SpecialDay[],
+  customApiKey?: string // Chave opcional vinda do banco
 ): Promise<ScheduleEntry[]> => {
   
-  // Inicialização correta conforme diretrizes
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  // Usa a chave personalizada se disponível, caso contrário usa a do ambiente
+  const apiKey = customApiKey || (process.env.API_KEY as string);
+  
+  if (!apiKey) {
+    throw new Error("Nenhuma API Key configurada. Por favor, adicione a chave no banco de dados ou selecione uma chave pessoal.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   const currentMonthDays = specialDays.filter(d => d.date.startsWith(month));
 
@@ -20,7 +27,7 @@ export const generateScheduleWithAI = async (
   }
 
   const systemInstruction = `
-    Você é um especialista em logística. Gere uma escala de trabalho APENAS para os dias listados.
+    Você é um especialista em logística de escalas. Gere uma escala de trabalho APENAS para os dias listados.
     
     REGRAS CRÍTICAS:
     1. Gere escala EXCLUSIVAMENTE para as datas fornecidas na lista de 'Dias Especiais'.
