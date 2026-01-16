@@ -23,7 +23,9 @@ import {
   Key,
   ExternalLink,
   Info,
-  Trash
+  Trash,
+  Database,
+  Code
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -121,10 +123,17 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error("Erro ao carregar dados:", err);
-      setError("Não foi possível carregar os dados do banco.");
+      setError(handleSupabaseError(err));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSupabaseError = (err: any) => {
+    if (err.message?.includes('row-level security')) {
+      return "ERRO DE PERMISSÃO: O Supabase bloqueou a gravação. Você precisa desativar o RLS ou criar políticas de acesso para as tabelas.";
+    }
+    return err.message || "Erro inesperado no banco de dados.";
   };
 
   const handleLogout = async () => {
@@ -180,7 +189,7 @@ const App: React.FC = () => {
       
       alert("Escala gerada com sucesso!");
     } catch (err: any) {
-      setError(err.message || "Erro ao gerar escala.");
+      setError(handleSupabaseError(err));
     } finally {
       setLoading(false);
     }
@@ -196,18 +205,17 @@ const App: React.FC = () => {
       return { ...prev, schedules: { ...prev.schedules, [currentMonth]: monthSchedules } };
     });
 
-    await supabase.from('schedules')
+    const { error } = await supabase.from('schedules')
       .update({ employee_id: newEmpId })
       .match({ date, employee_id: oldEmpId, month_key: currentMonth });
+    
+    if (error) setError(handleSupabaseError(error));
   };
 
   const resetDatabase = async () => {
-    if (!confirm("AVISO CRÍTICO: Isto apagará TODOS os dados de funcionários, ambientes, categorias e escalas. Deseja continuar?")) return;
-    if (!confirm("TEM CERTEZA ABSOLUTA? Esta ação não pode ser desfeita.")) return;
-
+    if (!confirm("AVISO CRÍTICO: Isto apagará TODOS os dados. Deseja continuar?")) return;
     setLoading(true);
     try {
-      // Deletar em ordem para evitar erros de chave estrangeira
       await supabase.from('schedules').delete().neq('month_key', 'trash');
       await supabase.from('special_days').delete().neq('name', 'trash');
       await supabase.from('employees').delete().neq('name', 'trash');
@@ -221,9 +229,9 @@ const App: React.FC = () => {
         specialDays: [],
         schedules: {}
       });
-      alert("Base de dados limpa com sucesso!");
+      alert("Base de dados limpa!");
     } catch (err: any) {
-      alert("Erro ao limpar base: " + err.message);
+      setError(handleSupabaseError(err));
     } finally {
       setLoading(false);
     }
@@ -274,7 +282,7 @@ const App: React.FC = () => {
         
         <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
-          {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} onReset={resetDatabase} />}
+          {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} onReset={resetDatabase} error={error} />}
           {activeTab === 'calendar' && (
             <CalendarView 
               state={state} 
@@ -411,15 +419,19 @@ const StatCard: React.FC<any> = ({ icon, label, value, color }) => (
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void }> = ({ state, loadData, onReset }) => {
+const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null }> = ({ state, loadData, onReset, error }) => {
   const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day' | 'sys'>('cat');
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async (table: string, payload: any) => {
     setLoading(true);
     const { error } = await supabase.from(table).insert([payload]);
-    if (error) alert("Erro ao salvar: " + error.message);
-    else loadData();
+    if (error) {
+      alert("Erro ao salvar no Supabase: " + error.message);
+      loadData(); // Tenta recarregar para ver se persistiu
+    } else {
+      loadData();
+    }
     setLoading(false);
   };
 
@@ -441,6 +453,26 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
         <TabBtn active={tab === 'day'} onClick={() => setTab('day')} label="Feriados/Dom" />
         <TabBtn active={tab === 'sys'} onClick={() => setTab('sys')} label="Sistema" />
       </div>
+      
+      {error && error.includes("security policy") && (
+        <div className="m-6 p-6 bg-amber-950/20 border border-amber-900/50 rounded-3xl flex flex-col gap-4 animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3 text-amber-500 font-black">
+            <Database size={20} />
+            <span>CORREÇÃO DO BANCO DE DADOS NECESSÁRIA</span>
+          </div>
+          <p className="text-sm text-slate-300">
+            Você precisa liberar o acesso no console do Supabase (SQL Editor) executando o comando abaixo:
+          </p>
+          <div className="bg-black/40 p-4 rounded-xl font-mono text-xs text-blue-400 overflow-x-auto select-all">
+            ALTER TABLE categories_escala DISABLE ROW LEVEL SECURITY;
+            ALTER TABLE employees DISABLE ROW LEVEL SECURITY;
+            ALTER TABLE environments DISABLE ROW LEVEL SECURITY;
+            ALTER TABLE special_days DISABLE ROW LEVEL SECURITY;
+            ALTER TABLE schedules DISABLE ROW LEVEL SECURITY;
+          </div>
+        </div>
+      )}
+
       <div className="p-10 flex-1">
         {tab === 'cat' && <CategorySetup categories={state.categories} onAdd={(n: string) => handleAdd('categories_escala', { name: n })} onDel={(id: string) => handleDel('categories_escala', id)} />}
         {tab === 'emp' && <EmployeeSetup employees={state.employees} categories={state.categories} onAdd={(n: string, c: string, r: boolean) => handleAdd('employees', { name: n, category_id: c, is_restricted: r })} onDel={(id: string) => handleDel('employees', id)} />}
@@ -626,7 +658,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
       </header>
 
       {error && (
-        <div className="bg-red-950/20 p-6 rounded-[30px] border border-red-900/50 flex items-center gap-4 text-red-400 font-black">
+        <div className="bg-red-950/20 p-6 rounded-[30px] border border-red-900/50 flex items-center gap-4 text-red-400 font-black animate-in zoom-in-95">
           <AlertCircle size={24} /> {error}
         </div>
       )}

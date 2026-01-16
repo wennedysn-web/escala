@@ -2,8 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./types";
 
-const API_KEY = process.env.API_KEY || "AIzaSyClpq8BOCiUVi0QIvDDxO4gE9OihSVNNEs";
-
 export const generateScheduleWithAI = async (
   month: string,
   categories: Category[],
@@ -12,13 +10,9 @@ export const generateScheduleWithAI = async (
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
   
-  if (!API_KEY) {
-    throw new Error("Chave de API não configurada.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  // Inicialização correta conforme diretrizes
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   
-  // Filtra os dias especiais apenas do mês selecionado para o prompt
   const currentMonthDays = specialDays.filter(d => d.date.startsWith(month));
 
   if (currentMonthDays.length === 0) {
@@ -85,9 +79,6 @@ export const generateScheduleWithAI = async (
     return result.entries || [];
   } catch (error: any) {
     console.error("Erro Gemini:", error);
-    if (error.message?.includes("429")) {
-      throw new Error("Limite de cota atingido. Aguarde 60 segundos.");
-    }
     throw new Error(error.message || "Falha ao gerar escala.");
   }
 };
