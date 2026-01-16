@@ -11,28 +11,23 @@ import {
   RotateCw,
   ChevronLeft,
   ChevronRight,
-  Download,
-  CheckCircle2,
   AlertCircle,
-  UserPlus,
   ShieldAlert,
-  Lock,
-  User,
   LogOut,
   Search,
   ArrowDownAz,
   ArrowUpAz,
   Database,
-  WifiOff
+  WifiOff,
+  Mail,
+  Lock
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
-const AUTH_KEY = 'app_escala_auth';
-
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => sessionStorage.getItem(AUTH_KEY) === 'true');
+  const [session, setSession] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'setup' | 'calendar' | 'employees'>('dashboard');
   const [currentMonth, setCurrentMonth] = useState(() => {
     const d = new Date();
@@ -50,18 +45,32 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Monitorar estado de autenticação real
   useEffect(() => {
-    if (isAuthenticated) {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (session) {
       if (isSupabaseConfigured) {
         loadInitialData();
       } else {
-        setError("Configuração do Supabase ausente. Verifique as variáveis de ambiente SUPABASE_URL e SUPABASE_ANON_KEY.");
+        setError("Supabase não configurado corretamente nas variáveis de ambiente.");
       }
     }
-  }, [isAuthenticated]);
+  }, [session]);
 
   const loadInitialData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [cats, emps, envs, days, schs] = await Promise.all([
         supabase.from('categories_escala').select('*'),
@@ -70,6 +79,10 @@ const App: React.FC = () => {
         supabase.from('special_days').select('*'),
         supabase.from('schedules').select('*')
       ]);
+
+      if (cats.error || emps.error || envs.error || days.error || schs.error) {
+        throw new Error("Erro ao buscar dados. Verifique as permissões RLS no Supabase.");
+      }
 
       const schedulesByMonth: Record<string, ScheduleEntry[]> = {};
       schs.data?.forEach((s: any) => {
@@ -95,26 +108,16 @@ const App: React.FC = () => {
         specialDays: days.data || [],
         schedules: schedulesByMonth
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Falha ao carregar dados do banco de dados.");
+      setError(err.message || "Falha ao carregar dados do banco de dados.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = (user: string, pass: string) => {
-    if (user === 'admin' && pass === 'tododia') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem(AUTH_KEY, 'true');
-      return true;
-    }
-    return false;
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    sessionStorage.removeItem(AUTH_KEY);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   const checkConfig = () => {
@@ -125,6 +128,7 @@ const App: React.FC = () => {
     return true;
   };
 
+  // Handlers Supabase
   const addCategory = async (name: string) => {
     if (!checkConfig()) return;
     const { data, error } = await supabase.from('categories_escala').insert([{ name }]).select();
@@ -228,7 +232,7 @@ const App: React.FC = () => {
       }));
     } catch (err: any) {
       console.error(err);
-      setError("Erro ao gerar escala via IA.");
+      setError("Erro ao gerar escala via IA. Verifique as chaves de API.");
     } finally {
       setLoading(false);
     }
@@ -256,7 +260,7 @@ const App: React.FC = () => {
     setCurrentMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  if (!isAuthenticated) return <Login onLogin={handleLogin} />;
+  if (!session) return <Login />;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
@@ -284,7 +288,7 @@ const App: React.FC = () => {
         <div className="p-4 border-t border-slate-800 space-y-2">
           <div className={`flex items-center gap-2 px-4 py-1 text-[9px] font-bold uppercase tracking-widest ${isSupabaseConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
             {isSupabaseConfigured ? <Database size={10} /> : <WifiOff size={10} />}
-            {isSupabaseConfigured ? 'Supabase Conectado' : 'DB Não Configurado'}
+            {isSupabaseConfigured ? 'Supabase Online' : 'DB Offline'}
           </div>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition text-sm font-medium">
             <LogOut size={16} /> Sair
@@ -293,18 +297,18 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 overflow-auto p-4 md:p-8">
-        {!isSupabaseConfigured && isAuthenticated && (
+        {!isSupabaseConfigured && (
            <div className="mb-6 bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-4 text-amber-800">
              <AlertCircle className="shrink-0" size={24} />
              <div className="text-sm">
                <p className="font-bold">Configuração Pendente</p>
-               <p>O Supabase não foi configurado. As alterações não serão salvas. Defina <b>SUPABASE_URL</b> e <b>SUPABASE_ANON_KEY</b> nas variáveis de ambiente.</p>
+               <p>O Supabase não foi configurado. As alterações não serão salvas. Defina <b>SUPABASE_URL</b> e <b>SUPABASE_ANON_KEY</b>.</p>
              </div>
            </div>
         )}
         {loading && <div className="fixed inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center font-bold text-slate-900 gap-2"><RotateCw className="animate-spin" /> Carregando...</div>}
         {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
-        {activeTab === 'setup' && <Setup state={state} onAddCat={addCategory} onDelCat={deleteCategory} onAddEmp={addEmployee} onDelEmp={deleteEmployee} onAddEnv={addEnvironment} onDelEnv={deleteEnvironment} onAddDay={addSpecialDay} onDelDay={deleteSpecialDay} onGenerateRandom={() => {}} />}
+        {activeTab === 'setup' && <Setup state={state} onAddCat={addCategory} onDelCat={deleteCategory} onAddEmp={addEmployee} onDelEmp={deleteEmployee} onAddEnv={addEnvironment} onDelEnv={deleteEnvironment} onAddDay={addSpecialDay} onDelDay={deleteSpecialDay} />}
         {activeTab === 'calendar' && <CalendarView state={state} currentMonth={currentMonth} onMonthChange={changeMonth} onSwap={swapEmployee} onGenerate={handleGenerateSchedule} loading={loading} />}
         {activeTab === 'employees' && <EmployeesList state={state} currentMonth={currentMonth} />}
       </main>
@@ -312,29 +316,68 @@ const App: React.FC = () => {
   );
 };
 
-const Login: React.FC<{ onLogin: (u: string, p: string) => boolean }> = ({ onLogin }) => {
-  const [user, setUser] = useState('');
-  const [pass, setPass] = useState('');
-  const [error, setError] = useState(false);
+const Login: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
       <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-2xl space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-2"><CalendarCheck className="text-blue-600" size={32} /></div>
           <h2 className="text-3xl font-bold text-slate-900">App Escala</h2>
-          <p className="text-slate-500 text-sm">Controle de Plantão e Equipe</p>
+          <p className="text-slate-500 text-sm">Acesso Restrito ao Gestor</p>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); if(!onLogin(user, pass)) setError(true); }} className="space-y-4">
-          <input type="text" placeholder="Usuário (admin)" value={user} onChange={e => setUser(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-blue-500" />
-          <input type="password" placeholder="Senha (tododia)" value={pass} onChange={e => setPass(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-blue-500" />
-          {error && <div className="text-red-600 text-sm font-bold bg-red-50 p-3 rounded-lg border border-red-100 flex items-center gap-2"><AlertCircle size={16} /> Credenciais incorretas</div>}
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition">Entrar no Sistema</button>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="relative">
+            <Mail className="absolute left-3 top-3.5 text-slate-400" size={18} />
+            <input 
+              type="email" 
+              placeholder="E-mail" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-blue-500" 
+              required
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-3 top-3.5 text-slate-400" size={18} />
+            <input 
+              type="password" 
+              placeholder="Senha" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-blue-500" 
+              required
+            />
+          </div>
+          {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-3 rounded-lg border border-red-100 flex items-center gap-2"><AlertCircle size={14} /> {error}</div>}
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition disabled:opacity-50"
+          >
+            {loading ? 'Entrando...' : 'Entrar no Sistema'}
+          </button>
         </form>
+        <p className="text-center text-[10px] text-slate-400">Certifique-se de ter criado um usuário no console do Supabase Auth.</p>
       </div>
     </div>
   );
 };
 
+// ... Restante dos sub-componentes (Dashboard, Setup, CalendarView, EmployeesList, etc) permanecem os mesmos mas com suporte a categories_escala ...
 const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null }> = ({ state, onGenerate, loading, error }) => (
   <div className="space-y-6 max-w-5xl mx-auto">
     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -343,7 +386,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
         {loading ? <RotateCw className="animate-spin" size={20} /> : <CalendarCheck size={20} />} Gerar Escala com IA
       </button>
     </div>
-    {error && <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg flex items-center gap-3"><AlertCircle size={20} />{error}</div>}
+    {error && <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg flex items-center gap-3 font-medium text-sm"><AlertCircle size={20} />{error}</div>}
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <StatCard icon={<Building2 className="text-blue-500" />} label="Ambientes" value={state.environments.length} />
       <StatCard icon={<Tags className="text-emerald-500" />} label="Categorias" value={state.categories.length} />
@@ -360,7 +403,7 @@ const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number }
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; onAddCat: (n: string) => void; onDelCat: (id: string) => void; onAddEmp: (n: string, c: string, r: boolean) => void; onDelEmp: (id: string) => void; onAddEnv: (n: string, r: Record<string, number>) => void; onDelEnv: (id: string) => void; onAddDay: (d: string, n: string, t: 'holiday' | 'sunday') => void; onDelDay: (d: string) => void; onGenerateRandom: () => void; }> = ({ state, onAddCat, onDelCat, onAddEmp, onDelEmp, onAddEnv, onDelEnv, onAddDay, onDelDay }) => {
+const Setup: React.FC<{ state: AppState; onAddCat: (n: string) => void; onDelCat: (id: string) => void; onAddEmp: (n: string, c: string, r: boolean) => void; onDelEmp: (id: string) => void; onAddEnv: (n: string, r: Record<string, number>) => void; onDelEnv: (id: string) => void; onAddDay: (d: string, n: string, t: 'holiday' | 'sunday') => void; onDelDay: (d: string) => void; }> = ({ state, onAddCat, onDelCat, onAddEmp, onDelEmp, onAddEnv, onDelEnv, onAddDay, onDelDay }) => {
   const [catName, setCatName] = useState('');
   const [empName, setEmpName] = useState('');
   const [empCatId, setEmpCatId] = useState('');
