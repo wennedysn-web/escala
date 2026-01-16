@@ -2,7 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./types";
 
-// Prioriza a chave do ambiente, mas usa a chave fornecida pelo usuário como garantia de funcionamento
 const API_KEY = process.env.API_KEY || "AIzaSyClpq8BOCiUVi0QIvDDxO4gE9OihSVNNEs";
 
 export const generateScheduleWithAI = async (
@@ -14,38 +13,43 @@ export const generateScheduleWithAI = async (
 ): Promise<ScheduleEntry[]> => {
   
   if (!API_KEY) {
-    throw new Error("API Key não encontrada. Por favor, configure uma chave válida.");
+    throw new Error("Chave de API não configurada.");
   }
 
   const ai = new GoogleGenAI({ apiKey: API_KEY });
   
-  const systemInstruction = `
-    Você é um especialista sênior em logística de RH. Sua tarefa é gerar uma escala mensal para o mês de ${month}.
-    
-    DIRETRIZES DE ESCALA:
-    1. DISTRIBUIÇÃO EQUITATIVA: Alterne os funcionários para que todos trabalhem aproximadamente a mesma quantidade de dias.
-    2. REQUISITOS DE AMBIENTE: Respeite rigorosamente a quantidade de pessoas por categoria definida no JSON de cada ambiente.
-    3. EXCLUSIVIDADE: Um funcionário não pode estar em dois lugares no mesmo dia.
-    4. RESTRIÇÕES DE SEGURANÇA (isRestricted: true): Funcionários marcados como restritos NUNCA podem trabalhar sozinhos em sua categoria num ambiente. Eles precisam de pelo menos um colega da mesma categoria sem restrição no mesmo local e dia.
-    5. FERIADOS E DOMINGOS: Trate os dias marcados em 'specialDays' com atenção, mantendo a escala conforme os requisitos do ambiente.
+  // Filtra os dias especiais apenas do mês selecionado para o prompt
+  const currentMonthDays = specialDays.filter(d => d.date.startsWith(month));
 
-    FORMATO DE SAÍDA:
-    Retorne estritamente um JSON válido seguindo o esquema fornecido. Não inclua explicações ou markdown.
+  if (currentMonthDays.length === 0) {
+    throw new Error("Não há Domingos ou Feriados cadastrados para este mês nas Configurações.");
+  }
+
+  const systemInstruction = `
+    Você é um especialista em logística. Gere uma escala de trabalho APENAS para os dias listados.
+    
+    REGRAS CRÍTICAS:
+    1. Gere escala EXCLUSIVAMENTE para as datas fornecidas na lista de 'Dias Especiais'.
+    2. Respeite os requisitos de cada ambiente (quantidade de pessoas por categoria).
+    3. Um funcionário não pode estar em dois lugares no mesmo dia.
+    4. DISTRIBUIÇÃO JUSTA: Tente não repetir o mesmo funcionário em todos os feriados se houver outros disponíveis da mesma categoria.
+    5. RESTRIÇÃO (isRestricted: true): Funcionário restrito NUNCA trabalha sozinho na sua categoria. Precisa de +1 colega da mesma categoria sem restrição no mesmo local.
+
+    RETORNO: JSON puro seguindo o esquema.
   `;
 
   const prompt = `
-    DADOS PARA PROCESSAMENTO:
-    - Mês: ${month}
-    - Categorias Disponíveis: ${JSON.stringify(categories)}
-    - Lista de Funcionários: ${JSON.stringify(employees)}
-    - Postos de Trabalho: ${JSON.stringify(environments)}
-    - Dias Especiais/Feriados: ${JSON.stringify(specialDays)}
+    DADOS:
+    - Mês Referência: ${month}
+    - Dias Especiais (GERAR APENAS PARA ESTES): ${JSON.stringify(currentMonthDays)}
+    - Categorias: ${JSON.stringify(categories)}
+    - Equipe: ${JSON.stringify(employees)}
+    - Ambientes/Postos: ${JSON.stringify(environments)}
 
-    Gere a escala completa para todos os dias do mês ${month}.
+    Gere a lista de 'entries'.
   `;
 
   try {
-    // Alterado para gemini-3-flash-preview: Mais estável e com cotas maiores para a chave gratuita
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
@@ -60,7 +64,7 @@ export const generateScheduleWithAI = async (
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  date: { type: Type.STRING, description: "Data no formato YYYY-MM-DD" },
+                  date: { type: Type.STRING },
                   employeeId: { type: Type.STRING },
                   environmentId: { type: Type.STRING },
                   categoryId: { type: Type.STRING }
@@ -75,28 +79,15 @@ export const generateScheduleWithAI = async (
     });
 
     const text = response.text;
-    if (!text) {
-      throw new Error("A IA retornou uma resposta vazia. Aguarde um minuto e tente novamente.");
-    }
+    if (!text) throw new Error("Resposta vazia da IA.");
 
     const result = JSON.parse(text);
-    if (!result.entries || !Array.isArray(result.entries)) {
-      throw new Error("O formato dos dados gerados pela IA é inválido.");
-    }
-
-    return result.entries;
+    return result.entries || [];
   } catch (error: any) {
-    console.error("Erro detalhado do Gemini:", error);
-    
-    // Tratamento para erro de limite de cota (429)
-    if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("RESOURCE_EXHAUSTED")) {
-      throw new Error("Limite de uso atingido: A Google limita o uso gratuito da IA. Aguarde cerca de 60 segundos e tente gerar a escala novamente.");
+    console.error("Erro Gemini:", error);
+    if (error.message?.includes("429")) {
+      throw new Error("Limite de cota atingido. Aguarde 60 segundos.");
     }
-
-    if (error.message?.includes("API Key") || error.message?.includes("API_KEY_INVALID") || error.message?.includes("403")) {
-      throw new Error("Problema com a Chave de API: Verifique se a chave foi digitada corretamente.");
-    }
-    
-    throw new Error(error.message || "Falha ao processar a escala via IA.");
+    throw new Error(error.message || "Falha ao gerar escala.");
   }
 };
