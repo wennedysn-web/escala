@@ -45,8 +45,9 @@ export const generateScheduleWithAI = async (
   `;
 
   try {
+    // Alterado para gemini-3-flash-preview: Mais estável e com cotas maiores para a chave gratuita
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         systemInstruction,
@@ -75,7 +76,7 @@ export const generateScheduleWithAI = async (
 
     const text = response.text;
     if (!text) {
-      throw new Error("A IA retornou uma resposta vazia. Verifique se a chave de API tem faturamento habilitado.");
+      throw new Error("A IA retornou uma resposta vazia. Aguarde um minuto e tente novamente.");
     }
 
     const result = JSON.parse(text);
@@ -87,14 +88,15 @@ export const generateScheduleWithAI = async (
   } catch (error: any) {
     console.error("Erro detalhado do Gemini:", error);
     
-    if (error.message?.includes("API Key") || error.message?.includes("API_KEY_INVALID") || error.message?.includes("403")) {
-      throw new Error("Problema com a Chave de API: A chave é inválida ou o projeto não possui faturamento ativo.");
-    }
-    
-    if (error.message?.includes("Requested entity was not found")) {
-      throw new Error("Projeto da API Key não encontrado. Tente selecionar outra chave.");
+    // Tratamento para erro de limite de cota (429)
+    if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error("Limite de uso atingido: A Google limita o uso gratuito da IA. Aguarde cerca de 60 segundos e tente gerar a escala novamente.");
     }
 
+    if (error.message?.includes("API Key") || error.message?.includes("API_KEY_INVALID") || error.message?.includes("403")) {
+      throw new Error("Problema com a Chave de API: Verifique se a chave foi digitada corretamente.");
+    }
+    
     throw new Error(error.message || "Falha ao processar a escala via IA.");
   }
 };
