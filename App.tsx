@@ -57,6 +57,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiError, setApiError] = useState(false);
+  const [dbApiKey, setDbApiKey] = useState<string | null>(null);
 
   useEffect(() => {
     const localSess = localStorage.getItem('escala_session');
@@ -80,22 +81,21 @@ const App: React.FC = () => {
     }
   }, [session]);
 
-  useEffect(() => {
-    const checkApiKey = async () => {
-      if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey && !process.env.API_KEY) {
-          setApiError(true);
-        }
-      }
-    };
-    checkApiKey();
-  }, []);
-
   const loadInitialData = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Busca a chave da API no banco de dados primeiro
+      const { data: configData } = await supabase
+        .from('settings_escala')
+        .select('value')
+        .eq('id', 'gemini_api_key')
+        .single();
+      
+      if (configData?.value) {
+        setDbApiKey(configData.value);
+      }
+
       const [cats, emps, envs, days, schs] = await Promise.all([
         supabase.from('categories_escala').select('*').order('name'),
         supabase.from('employees').select('*').order('name'),
@@ -136,7 +136,10 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error("Erro ao carregar dados:", err);
-      setError(handleSupabaseError(err));
+      // Ignora erro de linha não encontrada para configurações
+      if (!err.message?.includes('JSON object requested, but 0 rows were returned')) {
+        setError(handleSupabaseError(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -166,14 +169,6 @@ const App: React.FC = () => {
   };
 
   const handleGenerateSchedule = async () => {
-    if (!process.env.API_KEY && window.aistudio) {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        await handleSelectApiKey();
-        return;
-      }
-    }
-
     if (state.employees.length === 0 || state.environments.length === 0) {
       setError("Cadastre a equipe e os ambientes nas configurações primeiro.");
       return;
@@ -190,12 +185,14 @@ const App: React.FC = () => {
     setApiError(false);
 
     try {
+      // Passa a chave do banco (dbApiKey) se disponível
       const entries = await generateScheduleWithAI(
         currentMonth,
         state.categories,
         state.employees,
         state.environments,
-        state.specialDays
+        state.specialDays,
+        dbApiKey || undefined
       );
       
       if (!entries || entries.length === 0) {
@@ -225,7 +222,7 @@ const App: React.FC = () => {
       const msg = err.message || "";
       if (msg.includes('403') || msg.includes('API key') || msg.includes('PERMISSION_DENIED') || msg.includes('Requested entity was not found')) {
         setApiError(true);
-        setError("Erro na API Gemini: A chave de API não foi detectada ou é inválida.");
+        setError("Erro na API Gemini: Verifique se a chave no banco de dados está correta.");
       } else {
         setError(handleSupabaseError(err));
       }
@@ -365,6 +362,7 @@ const App: React.FC = () => {
               error={error} 
               apiError={apiError}
               onSelectKey={handleSelectApiKey}
+              hasDbKey={!!dbApiKey}
             />
           )}
           {activeTab === 'setup' && (
@@ -374,6 +372,7 @@ const App: React.FC = () => {
               onReset={resetDatabase} 
               error={error} 
               onSelectKey={handleSelectApiKey}
+              dbApiKey={dbApiKey}
             />
           )}
           {activeTab === 'calendar' && (
@@ -488,7 +487,7 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
   );
 };
 
-const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void }> = ({ state, onGenerate, loading, error, apiError, onSelectKey }) => (
+const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void; hasDbKey: boolean }> = ({ state, onGenerate, loading, error, apiError, onSelectKey, hasDbKey }) => (
   <div className="space-y-10">
     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-slate-900 p-10 rounded-[40px] shadow-sm border border-slate-800">
       <div className="flex items-center gap-4">
@@ -496,20 +495,25 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
           <h2 className="text-4xl font-black text-slate-50">Bem-vindo</h2>
           <p className="text-slate-400 font-bold mt-1">Gerencie as escalas de domingos e feriados.</p>
         </div>
+        {hasDbKey && (
+          <div className="bg-emerald-900/20 text-emerald-500 px-3 py-1 rounded-full border border-emerald-900/50 text-[10px] font-black uppercase flex items-center gap-2">
+            <ShieldCheck size={12}/> Chave DB Ativa
+          </div>
+        )}
       </div>
       <button onClick={onGenerate} disabled={loading} className="flex items-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-8 py-5 rounded-[24px] font-black transition-all shadow-xl active:scale-95 disabled:opacity-50">
         <CalendarCheck size={24} /> Gerar Escala Mensal
       </button>
     </div>
     
-    {apiError && (
+    {(apiError && !hasDbKey) && (
       <div className="bg-amber-950/20 p-8 rounded-[40px] border-2 border-amber-900/50 flex flex-col md:flex-row items-center gap-8 animate-in zoom-in-95">
         <div className="p-5 bg-amber-900/30 text-amber-500 rounded-3xl">
           <KeyRound size={40} />
         </div>
         <div className="flex-1 space-y-2 text-center md:text-left">
           <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">Problema com API Key</h3>
-          <p className="text-slate-300 font-medium text-balance">Não foi possível detectar uma Chave de API ativa. Para usar a IA, é necessário selecionar uma chave.</p>
+          <p className="text-slate-300 font-medium text-balance">Não foi possível detectar uma Chave de API ativa. Para usar a IA, é necessário selecionar uma chave ou configurar no banco.</p>
           <div className="pt-2">
              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline text-xs font-bold flex items-center justify-center md:justify-start gap-1">
                <Info size={14}/> Faturamento da API
@@ -538,7 +542,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void }> = ({ state, loadData, onReset, error, onSelectKey }) => {
+const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void; dbApiKey: string|null }> = ({ state, loadData, onReset, error, onSelectKey, dbApiKey }) => {
   const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day' | 'sys'>('cat');
   const [loading, setLoading] = useState(false);
 
@@ -586,6 +590,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
             ALTER TABLE environments DISABLE ROW LEVEL SECURITY;
             ALTER TABLE special_days DISABLE ROW LEVEL SECURITY;
             ALTER TABLE schedules DISABLE ROW LEVEL SECURITY;
+            ALTER TABLE settings_escala DISABLE ROW LEVEL SECURITY;
           </div>
         </div>
       )}
@@ -601,6 +606,12 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                 <div className="flex items-center gap-4 text-blue-500">
                   <KeyRound size={32} />
                   <h3 className="text-2xl font-black uppercase tracking-tight">Chave da Inteligência Artificial</h3>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className={`p-4 rounded-2xl border ${dbApiKey ? 'bg-emerald-900/10 border-emerald-900/50' : 'bg-slate-800 border-slate-700'}`}>
+                    <p className="text-xs font-bold text-slate-400 uppercase">Status no Banco de Dados:</p>
+                    <p className={`font-black ${dbApiKey ? 'text-emerald-500' : 'text-slate-500'}`}>{dbApiKey ? '✓ Chave configurada' : '✗ Nenhuma chave no banco'}</p>
+                  </div>
                 </div>
                 <button onClick={onSelectKey} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3">
                   <RotateCw size={20} /> Vincular/Trocar Chave de API
@@ -638,7 +649,7 @@ const CategorySetup: React.FC<any> = ({ categories, onAdd, onDel }) => {
         <button onClick={() => { if(name){ onAdd(name); setName(''); } }} className="bg-blue-600 text-white px-8 rounded-[20px] font-black transition-all hover:bg-blue-500"><Plus/></button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {categories.map((c: any) => (
+        {categories.map((c: Category) => (
           <div key={c.id} className="flex justify-between items-center p-5 bg-slate-800/50 border border-slate-800 rounded-[24px]">
             <span className="font-bold text-slate-100">{c.name}</span>
             <button onClick={() => onDel(c.id)} className="text-red-400 hover:text-red-500"><Trash2 size={18}/></button>
@@ -818,23 +829,25 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1"><Building2 size={12}/> {env.name}</p>
                             <div className="relative group">
                               <button className="text-slate-600 hover:text-blue-500 transition-colors"><UserPlus size={14}/></button>
-                              <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-30 p-2">
-                                <p className="text-[8px] font-black text-slate-500 uppercase p-2 border-b border-slate-700 mb-1">Adicionar Restrito</p>
-                                {state.employees.filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: ScheduleEntry) => de.employeeId === emp.id)).length === 0 ? (
-                                  <p className="text-[10px] text-slate-600 p-2 italic">Nenhum disponível</p>
-                                ) : (
-                                  state.employees
-                                    .filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: ScheduleEntry) => de.employeeId === emp.id))
-                                    .map((emp: Employee) => (
-                                      <button 
-                                        key={emp.id}
-                                        onClick={() => onAddRestricted(specialDay.date, env.id, emp.categoryId, emp.id)}
-                                        className="w-full text-left p-2 hover:bg-blue-600 hover:text-white rounded-xl text-[11px] font-bold transition-all truncate"
-                                      >
-                                        {emp.name}
-                                      </button>
-                                    ))
-                                )}
+                              <div className="hidden group-hover:block absolute right-0 top-full w-48 pt-2 z-50">
+                                <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl p-2">
+                                  <p className="text-[8px] font-black text-slate-500 uppercase p-2 border-b border-slate-700 mb-1">Adicionar Restrito</p>
+                                  {state.employees.filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: ScheduleEntry) => de.employeeId === emp.id)).length === 0 ? (
+                                    <p className="text-[10px] text-slate-600 p-2 italic">Nenhum disponível</p>
+                                  ) : (
+                                    state.employees
+                                      .filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: ScheduleEntry) => de.employeeId === emp.id))
+                                      .map((emp: Employee) => (
+                                        <button 
+                                          key={emp.id}
+                                          onClick={() => onAddRestricted(specialDay.date, env.id, emp.categoryId, emp.id)}
+                                          className="w-full text-left p-2 hover:bg-blue-600 hover:text-white rounded-xl text-[11px] font-bold transition-all truncate"
+                                        >
+                                          {emp.name}
+                                        </button>
+                                      ))
+                                  )}
+                                </div>
                               </div>
                             </div>
                          </div>
@@ -857,15 +870,17 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                                     <button onClick={() => onRemove(specialDay.date, env.id, e.employeeId)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 transition-all"><Trash2 size={12}/></button>
                                     <div className="relative group/swap">
                                        <button className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-blue-400 transition-all"><RotateCw size={12}/></button>
-                                       <div className="hidden group-hover/swap:block absolute right-0 top-full mt-1 w-40 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-40 p-1">
-                                          {state.employees
-                                            .filter((x: Employee) => x.categoryId === e.categoryId && !dayEntries.some((de: ScheduleEntry) => de.employeeId === x.id))
-                                            .map((x: Employee) => (
-                                              <button key={x.id} onClick={() => onSwap(specialDay.date, e.employeeId, x.id)} className="w-full text-left p-2 hover:bg-blue-600 rounded-lg text-[10px] font-bold truncate transition-all">
-                                                {x.name}
-                                              </button>
-                                            ))
-                                          }
+                                       <div className="hidden group-hover/swap:block absolute right-0 top-full w-40 pt-1 z-50">
+                                          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1">
+                                            {state.employees
+                                              .filter((x: Employee) => x.categoryId === e.categoryId && !dayEntries.some((de: ScheduleEntry) => de.employeeId === x.id))
+                                              .map((x: Employee) => (
+                                                <button key={x.id} onClick={() => onSwap(specialDay.date, e.employeeId, x.id)} className="w-full text-left p-2 hover:bg-blue-600 rounded-lg text-[10px] font-bold truncate transition-all">
+                                                  {x.name}
+                                                </button>
+                                              ))
+                                            }
+                                          </div>
                                        </div>
                                     </div>
                                   </div>

@@ -3,22 +3,24 @@ import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./ty
 
 /**
  * Generates a schedule using the Gemini API.
- * The API key is obtained exclusively from the environment variable process.env.API_KEY.
  */
 export const generateScheduleWithAI = async (
   month: string,
   categories: Category[],
   employees: Employee[],
   environments: Environment[],
-  specialDays: SpecialDay[]
+  specialDays: SpecialDay[],
+  providedApiKey?: string
 ): Promise<ScheduleEntry[]> => {
   
-  const apiKey = process.env.API_KEY;
+  // Prioriza a chave provida (ex: do banco de dados) sobre a do ambiente
+  const apiKey = providedApiKey || process.env.API_KEY;
+  
   if (!apiKey) {
-    throw new Error("API Key não configurada. Por favor, selecione uma chave no diálogo.");
+    throw new Error("API Key não detectada. Por favor, configure-a no banco de dados ou no diálogo.");
   }
 
-  // Initialization of the Gemini API client.
+  // Inicialização do cliente.
   const ai = new GoogleGenAI({ apiKey });
   
   const currentMonthDays = specialDays.filter(d => d.date.startsWith(month));
