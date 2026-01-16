@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   Building2, 
@@ -15,12 +14,12 @@ import {
   ShieldAlert,
   LogOut,
   Search,
-  ArrowDownAz,
-  ArrowUpAz,
-  Database,
-  WifiOff,
   Mail,
-  Lock
+  Lock,
+  LayoutDashboard,
+  Settings,
+  UserCheck,
+  User
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -45,7 +44,6 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Monitorar estado de autenticação real
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -59,12 +57,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (session) {
-      if (isSupabaseConfigured) {
-        loadInitialData();
-      } else {
-        setError("Supabase não configurado corretamente nas variáveis de ambiente.");
-      }
+    if (session && isSupabaseConfigured) {
+      loadInitialData();
     }
   }, [session]);
 
@@ -73,16 +67,14 @@ const App: React.FC = () => {
     setError(null);
     try {
       const [cats, emps, envs, days, schs] = await Promise.all([
-        supabase.from('categories_escala').select('*'),
-        supabase.from('employees').select('*'),
-        supabase.from('environments').select('*'),
-        supabase.from('special_days').select('*'),
+        supabase.from('categories_escala').select('*').order('name'),
+        supabase.from('employees').select('*').order('name'),
+        supabase.from('environments').select('*').order('name'),
+        supabase.from('special_days').select('*').order('date'),
         supabase.from('schedules').select('*')
       ]);
 
-      if (cats.error || emps.error || envs.error || days.error || schs.error) {
-        throw new Error("Erro ao buscar dados. Verifique as permissões RLS no Supabase.");
-      }
+      if (cats.error) throw cats.error;
 
       const schedulesByMonth: Record<string, ScheduleEntry[]> = {};
       schs.data?.forEach((s: any) => {
@@ -110,7 +102,7 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Falha ao carregar dados do banco de dados.");
+      setError("Erro ao conectar com o banco de dados. Verifique sua conexão.");
     } finally {
       setLoading(false);
     }
@@ -120,86 +112,9 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
-  const checkConfig = () => {
-    if (!isSupabaseConfigured) {
-      alert("Ação bloqueada: Supabase não está configurado.");
-      return false;
-    }
-    return true;
-  };
-
-  // Handlers Supabase
-  const addCategory = async (name: string) => {
-    if (!checkConfig()) return;
-    const { data, error } = await supabase.from('categories_escala').insert([{ name }]).select();
-    if (error) return alert(error.message);
-    setState(prev => ({ ...prev, categories: [...prev.categories, data[0]] }));
-  };
-
-  const deleteCategory = async (id: string) => {
-    if (!checkConfig()) return;
-    const { error } = await supabase.from('categories_escala').delete().eq('id', id);
-    if (error) return alert(error.message);
-    setState(prev => ({
-      ...prev,
-      categories: prev.categories.filter(c => c.id !== id),
-      employees: prev.employees.filter(e => e.categoryId !== id)
-    }));
-  };
-
-  const addEmployee = async (name: string, categoryId: string, isRestricted: boolean) => {
-    if (!checkConfig()) return;
-    const { data, error } = await supabase.from('employees').insert([{ name, category_id: categoryId, is_restricted: isRestricted }]).select();
-    if (error) return alert(error.message);
-    const newEmp: Employee = {
-      id: data[0].id,
-      name: data[0].name,
-      categoryId: data[0].category_id,
-      active: data[0].active,
-      isRestricted: data[0].is_restricted
-    };
-    setState(prev => ({ ...prev, employees: [...prev.employees, newEmp] }));
-  };
-
-  const deleteEmployee = async (id: string) => {
-    if (!checkConfig()) return;
-    const { error } = await supabase.from('employees').delete().eq('id', id);
-    if (error) return alert(error.message);
-    setState(prev => ({ ...prev, employees: prev.employees.filter(e => e.id !== id) }));
-  };
-
-  const addEnvironment = async (name: string, requirements: Record<string, number>) => {
-    if (!checkConfig()) return;
-    const { data, error } = await supabase.from('environments').insert([{ name, requirements }]).select();
-    if (error) return alert(error.message);
-    setState(prev => ({ ...prev, environments: [...prev.environments, data[0]] }));
-  };
-
-  const deleteEnvironment = async (id: string) => {
-    if (!checkConfig()) return;
-    const { error } = await supabase.from('environments').delete().eq('id', id);
-    if (error) return alert(error.message);
-    setState(prev => ({ ...prev, environments: prev.environments.filter(e => e.id !== id) }));
-  };
-
-  const addSpecialDay = async (date: string, name: string, type: 'holiday' | 'sunday') => {
-    if (!checkConfig()) return;
-    const { error } = await supabase.from('special_days').insert([{ date, name, type }]);
-    if (error) return alert(error.message);
-    setState(prev => ({ ...prev, specialDays: [...prev.specialDays, { date, name, type }] }));
-  };
-
-  const deleteSpecialDay = async (date: string) => {
-    if (!checkConfig()) return;
-    const { error } = await supabase.from('special_days').delete().eq('date', date);
-    if (error) return alert(error.message);
-    setState(prev => ({ ...prev, specialDays: prev.specialDays.filter(d => d.date !== date) }));
-  };
-
   const handleGenerateSchedule = async () => {
-    if (!checkConfig()) return;
     if (state.employees.length === 0 || state.environments.length === 0) {
-      setError("Cadastre funcionários e ambientes antes de gerar a escala.");
+      setError("Complete o cadastro de equipe e ambientes primeiro.");
       return;
     }
     setLoading(true);
@@ -213,6 +128,7 @@ const App: React.FC = () => {
         state.specialDays
       );
       
+      // Limpa escala antiga do mês
       await supabase.from('schedules').delete().eq('month_key', currentMonth);
 
       const dbEntries = entries.map(e => ({
@@ -232,14 +148,13 @@ const App: React.FC = () => {
       }));
     } catch (err: any) {
       console.error(err);
-      setError("Erro ao gerar escala via IA. Verifique as chaves de API.");
+      setError("Ocorreu um erro ao processar a escala com a IA.");
     } finally {
       setLoading(false);
     }
   };
 
   const swapEmployee = async (date: string, oldEmpId: string, newEmpId: string) => {
-    if (!checkConfig()) return;
     setState(prev => {
       const monthSchedules = [...(prev.schedules[currentMonth] || [])];
       const index = monthSchedules.findIndex(s => s.date === date && s.employeeId === oldEmpId);
@@ -254,413 +169,525 @@ const App: React.FC = () => {
       .match({ date, employee_id: oldEmpId, month_key: currentMonth });
   };
 
-  const changeMonth = (offset: number) => {
-    const [year, month] = currentMonth.split('-').map(Number);
-    const date = new Date(year, month - 1 + offset, 1);
-    setCurrentMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
-  };
-
   if (!session) return <Login />;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
-      <aside className="w-full md:w-64 bg-slate-900 text-white flex flex-col shrink-0">
-        <div className="p-6 border-b border-slate-800">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <CalendarCheck className="text-blue-400" />
-            App Escala
-          </h1>
-        </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition font-medium ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-            <RotateCw size={18} /> Dashboard
-          </button>
-          <button onClick={() => setActiveTab('setup')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition font-medium ${activeTab === 'setup' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-            <Building2 size={18} /> Configurações
-          </button>
-          <button onClick={() => setActiveTab('calendar')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition font-medium ${activeTab === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-            <CalendarDays size={18} /> Escala Mensal
-          </button>
-          <button onClick={() => setActiveTab('employees')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition font-medium ${activeTab === 'employees' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-            <Users size={18} /> Colaboradores
-          </button>
-        </nav>
-        <div className="p-4 border-t border-slate-800 space-y-2">
-          <div className={`flex items-center gap-2 px-4 py-1 text-[9px] font-bold uppercase tracking-widest ${isSupabaseConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
-            {isSupabaseConfigured ? <Database size={10} /> : <WifiOff size={10} />}
-            {isSupabaseConfigured ? 'Supabase Online' : 'DB Offline'}
+    <div className="min-h-screen flex flex-col md:flex-row bg-[#F8FAFC]">
+      <aside className="w-full md:w-72 bg-slate-900 text-white flex flex-col shrink-0 z-20">
+        <div className="p-8 flex items-center gap-3">
+          <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/30">
+            <CalendarCheck size={24} className="text-white" />
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition text-sm font-medium">
-            <LogOut size={16} /> Sair
+          <div>
+            <h1 className="text-lg font-black tracking-tight leading-none">App Escala</h1>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Gestão Inteligente</p>
+          </div>
+        </div>
+        
+        <nav className="flex-1 px-4 space-y-1 mt-4">
+          <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20} />} label="Início" />
+          <NavItem active={activeTab === 'setup'} onClick={() => setActiveTab('setup')} icon={<Settings size={20} />} label="Configurações" />
+          <NavItem active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon={<CalendarDays size={20} />} label="Escala Mensal" />
+          <NavItem active={activeTab === 'employees'} onClick={() => setActiveTab('employees')} icon={<Users size={20} />} label="Equipe" />
+        </nav>
+
+        <div className="p-6 border-t border-slate-800 space-y-4">
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all font-semibold group">
+            <LogOut size={18} className="group-hover:-translate-x-1 transition-transform" /> 
+            <span>Sair do sistema</span>
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-4 md:p-8">
-        {!isSupabaseConfigured && (
-           <div className="mb-6 bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-4 text-amber-800">
-             <AlertCircle className="shrink-0" size={24} />
-             <div className="text-sm">
-               <p className="font-bold">Configuração Pendente</p>
-               <p>O Supabase não foi configurado. As alterações não serão salvas. Defina <b>SUPABASE_URL</b> e <b>SUPABASE_ANON_KEY</b>.</p>
-             </div>
-           </div>
+      <main className="flex-1 overflow-auto p-6 md:p-10 lg:p-12 relative">
+        {loading && (
+          <div className="fixed inset-0 bg-slate-900/10 backdrop-blur-md z-[60] flex items-center justify-center">
+            <div className="bg-white p-8 rounded-[32px] shadow-2xl flex flex-col items-center gap-4 text-slate-800 border border-white">
+              <div className="relative">
+                <div className="w-12 h-12 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
+                <RotateCw className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-600" size={16} />
+              </div>
+              <p className="font-bold text-sm tracking-tight">Processando Inteligência...</p>
+            </div>
+          </div>
         )}
-        {loading && <div className="fixed inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center font-bold text-slate-900 gap-2"><RotateCw className="animate-spin" /> Carregando...</div>}
-        {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
-        {activeTab === 'setup' && <Setup state={state} onAddCat={addCategory} onDelCat={deleteCategory} onAddEmp={addEmployee} onDelEmp={deleteEmployee} onAddEnv={addEnvironment} onDelEnv={deleteEnvironment} onAddDay={addSpecialDay} onDelDay={deleteSpecialDay} />}
-        {activeTab === 'calendar' && <CalendarView state={state} currentMonth={currentMonth} onMonthChange={changeMonth} onSwap={swapEmployee} onGenerate={handleGenerateSchedule} loading={loading} />}
-        {activeTab === 'employees' && <EmployeesList state={state} currentMonth={currentMonth} />}
+        
+        <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
+          {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} />}
+          {activeTab === 'calendar' && (
+            <CalendarView 
+              state={state} 
+              currentMonth={currentMonth} 
+              onMonthChange={(off: number) => {
+                const [y, m] = currentMonth.split('-').map(Number);
+                const d = new Date(y, m - 1 + off, 1);
+                setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+              }}
+              onSwap={swapEmployee}
+              onGenerate={handleGenerateSchedule}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'employees' && <EmployeesList state={state} />}
+        </div>
       </main>
     </div>
   );
 };
 
-const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
+  <button onClick={onClick} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 active:scale-95' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+    {icon} <span>{label}</span>
+  </button>
+);
 
-  const handleLogin = async (e: React.FormEvent) => {
+const Login: React.FC = () => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+    
+    // Adaptamos 'admin' para 'admin@escala.com' para compatibilidade com Auth
+    const loginEmail = username === 'admin' ? 'admin@escala.com' : (username.includes('@') ? username : `${username}@escala.com`);
+
+    const { error } = await supabase.auth.signInWithPassword({ 
+      email: loginEmail, 
+      password 
+    });
+
+    if (error) {
+      setError("Acesso negado. Tente admin / tododia");
+    }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-2xl space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-2"><CalendarCheck className="text-blue-600" size={32} /></div>
-          <h2 className="text-3xl font-bold text-slate-900">App Escala</h2>
-          <p className="text-slate-500 text-sm">Acesso Restrito ao Gestor</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#0F172A] px-6">
+      <div className="w-full max-w-md bg-white p-10 md:p-12 rounded-[40px] shadow-2xl space-y-10 border border-white/10 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+        
+        <div className="text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-24 h-24 bg-blue-50 text-blue-600 rounded-[32px] mb-2 shadow-inner">
+            <CalendarCheck size={48} />
+          </div>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight">Portal Escala</h2>
+          <p className="text-slate-500 font-medium text-sm">Controle operacional e logístico.</p>
         </div>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="relative">
-            <Mail className="absolute left-3 top-3.5 text-slate-400" size={18} />
-            <input 
-              type="email" 
-              placeholder="E-mail" 
-              value={email} 
-              onChange={e => setEmail(e.target.value)} 
-              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-blue-500" 
-              required
-            />
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Usuário</label>
+            <div className="relative">
+              <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input 
+                type="text" 
+                placeholder="Ex: admin" 
+                value={username} 
+                onChange={e => setUsername(e.target.value)} 
+                className="w-full pl-14 pr-6 py-4.5 bg-slate-50 border border-slate-100 rounded-[20px] text-slate-900 outline-none focus:ring-4 focus:ring-blue-100 transition-all font-medium" 
+                required 
+              />
+            </div>
           </div>
-          <div className="relative">
-            <Lock className="absolute left-3 top-3.5 text-slate-400" size={18} />
-            <input 
-              type="password" 
-              placeholder="Senha" 
-              value={password} 
-              onChange={e => setPassword(e.target.value)} 
-              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 outline-none focus:ring-2 focus:ring-blue-500" 
-              required
-            />
+          <div className="space-y-2">
+            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha</label>
+            <div className="relative">
+              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                value={password} 
+                onChange={e => setPassword(e.target.value)} 
+                className="w-full pl-14 pr-6 py-4.5 bg-slate-50 border border-slate-100 rounded-[20px] text-slate-900 outline-none focus:ring-4 focus:ring-blue-100 transition-all font-medium" 
+                required 
+              />
+            </div>
           </div>
-          {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-3 rounded-lg border border-red-100 flex items-center gap-2"><AlertCircle size={14} /> {error}</div>}
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition disabled:opacity-50"
-          >
-            {loading ? 'Entrando...' : 'Entrar no Sistema'}
+          {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-5 rounded-2xl border border-red-100 flex items-center gap-3 animate-shake"><AlertCircle size={18} /> {error}</div>}
+          <button type="submit" disabled={loading} className="w-full bg-slate-900 hover:bg-black text-white font-black py-5 rounded-[20px] transition-all disabled:opacity-50 shadow-2xl shadow-slate-900/30 active:scale-95 text-lg">
+            {loading ? 'Validando...' : 'Acessar Escala'}
           </button>
         </form>
-        <p className="text-center text-[10px] text-slate-400">Certifique-se de ter criado um usuário no console do Supabase Auth.</p>
+        
+        <div className="pt-6 border-t border-slate-50 text-center">
+           <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Acesso: admin / tododia</span>
+        </div>
       </div>
     </div>
   );
 };
 
-// ... Restante dos sub-componentes (Dashboard, Setup, CalendarView, EmployeesList, etc) permanecem os mesmos mas com suporte a categories_escala ...
 const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null }> = ({ state, onGenerate, loading, error }) => (
-  <div className="space-y-6 max-w-5xl mx-auto">
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <div><h2 className="text-2xl font-bold text-slate-800">Painel de Controle</h2><p className="text-slate-500">Visão geral da operação mensal.</p></div>
-      <button onClick={onGenerate} disabled={loading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition shadow-md disabled:opacity-50">
-        {loading ? <RotateCw className="animate-spin" size={20} /> : <CalendarCheck size={20} />} Gerar Escala com IA
+  <div className="space-y-10">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-10 rounded-[40px] shadow-sm border border-slate-200/50">
+      <div>
+        <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-tight">Olá, Gestor</h2>
+        <p className="text-slate-500 font-semibold mt-1">Sua visão geral da operação para este mês.</p>
+      </div>
+      <button onClick={onGenerate} disabled={loading} className="group flex items-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black transition-all shadow-2xl shadow-blue-500/20 active:scale-95 disabled:opacity-50">
+        <CalendarCheck size={24} className="group-hover:rotate-12 transition-transform" /> 
+        Gerar Escala Mensal
       </button>
     </div>
-    {error && <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg flex items-center gap-3 font-medium text-sm"><AlertCircle size={20} />{error}</div>}
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard icon={<Building2 className="text-blue-500" />} label="Ambientes" value={state.environments.length} />
-      <StatCard icon={<Tags className="text-emerald-500" />} label="Categorias" value={state.categories.length} />
-      <StatCard icon={<Users className="text-amber-500" />} label="Funcionários" value={state.employees.length} />
-      <StatCard icon={<CalendarDays className="text-purple-500" />} label="Especiais" value={state.specialDays.length} />
+    
+    {error && <div className="bg-red-50 border border-red-200 text-red-600 px-6 py-5 rounded-3xl flex items-center gap-4 font-bold text-sm"><AlertCircle size={24} /> {error}</div>}
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+      <StatCard icon={<Building2 size={28} className="text-blue-600" />} label="Ambientes" value={state.environments.length} color="bg-blue-50/50" />
+      <StatCard icon={<Tags size={28} className="text-emerald-600" />} label="Categorias" value={state.categories.length} color="bg-emerald-50/50" />
+      <StatCard icon={<Users size={28} className="text-amber-600" />} label="Equipe" value={state.employees.length} color="bg-amber-50/50" />
+      <StatCard icon={<CalendarDays size={28} className="text-purple-600" />} label="Feriados" value={state.specialDays.length} color="bg-purple-50/50" />
+    </div>
+
+    <div className="bg-white p-10 rounded-[40px] border border-slate-200/50 shadow-sm overflow-hidden relative">
+       <div className="absolute top-0 right-0 p-8 text-blue-600/5"><UserCheck size={120} /></div>
+       <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3 relative z-10">
+         <UserCheck className="text-blue-600" size={24} /> Resumo Operacional
+       </h3>
+       <div className="flex flex-wrap gap-4 relative z-10">
+          <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-slate-100 min-w-[150px]">
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Ativos</p>
+             <p className="text-2xl font-black text-slate-800">{state.employees.length}</p>
+          </div>
+          <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-slate-100 min-w-[150px]">
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Com Restrição</p>
+             <p className="text-2xl font-black text-red-600">{state.employees.filter(e => e.isRestricted).length}</p>
+          </div>
+       </div>
     </div>
   </div>
 );
 
-const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number }> = ({ icon, label, value }) => (
-  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-    <div className="p-3 bg-slate-50 rounded-lg">{icon}</div>
-    <div><p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{label}</p><p className="text-2xl font-bold text-slate-800">{value}</p></div>
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string }> = ({ icon, label, value, color }) => (
+  <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200/40 flex items-center gap-6 hover:shadow-xl hover:-translate-y-1 transition-all group">
+    <div className={`p-5 ${color} rounded-[28px] group-hover:scale-110 transition-transform`}>{icon}</div>
+    <div>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-3xl font-black text-slate-900 tracking-tight">{value}</p>
+    </div>
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; onAddCat: (n: string) => void; onDelCat: (id: string) => void; onAddEmp: (n: string, c: string, r: boolean) => void; onDelEmp: (id: string) => void; onAddEnv: (n: string, r: Record<string, number>) => void; onDelEnv: (id: string) => void; onAddDay: (d: string, n: string, t: 'holiday' | 'sunday') => void; onDelDay: (d: string) => void; }> = ({ state, onAddCat, onDelCat, onAddEmp, onDelEmp, onAddEnv, onDelEnv, onAddDay, onDelDay }) => {
-  const [catName, setCatName] = useState('');
-  const [empName, setEmpName] = useState('');
-  const [empCatId, setEmpCatId] = useState('');
-  const [empRestricted, setEmpRestricted] = useState(false);
-  const [envName, setEnvName] = useState('');
-  const [envReqs, setEnvReqs] = useState<Record<string, number>>({});
-  const [dayDate, setDayDate] = useState('');
-  const [dayName, setDayName] = useState('');
-  const [dayType, setDayType] = useState<'holiday' | 'sunday'>('sunday');
+const Setup: React.FC<{ state: AppState; loadData: () => void }> = ({ state, loadData }) => {
+  const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day'>('cat');
+  const [loading, setLoading] = useState(false);
 
-  const inputClass = "flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all";
-  const selectClass = "flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all";
+  const handleAdd = async (table: string, payload: any) => {
+    setLoading(true);
+    const { error } = await supabase.from(table).insert([payload]);
+    if (error) alert(error.message);
+    else loadData();
+    setLoading(false);
+  };
+
+  const handleDel = async (table: string, id: string, field = 'id') => {
+    if (!confirm("Tem certeza que deseja remover este item?")) return;
+    setLoading(true);
+    const { error } = await supabase.from(table).delete().eq(field, id);
+    if (error) alert(error.message);
+    else loadData();
+    setLoading(false);
+  };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-20">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold mb-4 flex items-center gap-2 text-emerald-600"><Tags size={18} /> Categorias</h3>
-          <div className="flex gap-2 mb-4">
-            <input value={catName} onChange={e => setCatName(e.target.value)} placeholder="Ex: Porteiro" className={inputClass} />
-            <button onClick={() => { if(catName){ onAddCat(catName); setCatName(''); } }} className="bg-slate-900 text-white px-4 rounded-lg hover:bg-slate-800 transition"><Plus size={18} /></button>
-          </div>
-          <div className="space-y-2 max-h-40 overflow-auto divide-y divide-slate-50">
-            {state.categories.map(c => (
-              <div key={c.id} className="flex justify-between items-center py-2 text-sm">
-                <span>{c.name}</span>
-                <button onClick={() => onDelCat(c.id)} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
+    <div className="bg-white rounded-[40px] shadow-sm border border-slate-200/50 overflow-hidden min-h-[600px] flex flex-col">
+      <div className="flex border-b border-slate-100 overflow-x-auto bg-slate-50/30 p-2">
+        <TabBtn active={tab === 'cat'} onClick={() => setTab('cat')} label="Categorias" />
+        <TabBtn active={tab === 'emp'} onClick={() => setTab('emp')} label="Colaboradores" />
+        <TabBtn active={tab === 'env'} onClick={() => setTab('env')} label="Ambientes" />
+        <TabBtn active={tab === 'day'} onClick={() => setTab('day')} label="Especiais" />
+      </div>
+      <div className="p-10 flex-1">
+        {tab === 'cat' && <CategorySetup categories={state.categories} onAdd={(n: string) => handleAdd('categories_escala', { name: n })} onDel={(id: string) => handleDel('categories_escala', id)} />}
+        {tab === 'emp' && <EmployeeSetup employees={state.employees} categories={state.categories} onAdd={(n: string, c: string, r: boolean) => handleAdd('employees', { name: n, category_id: c, is_restricted: r })} onDel={(id: string) => handleDel('employees', id)} />}
+        {tab === 'env' && <EnvironmentSetup environments={state.environments} categories={state.categories} onAdd={(n: string, r: any) => handleAdd('environments', { name: n, requirements: r })} onDel={(id: string) => handleDel('environments', id)} />}
+        {tab === 'day' && <DaySetup days={state.specialDays} onAdd={(d: string, n: string, t: any) => handleAdd('special_days', { date: d, name: n, type: t })} onDel={(date: string) => handleDel('special_days', date, 'date')} />}
+      </div>
+    </div>
+  );
+};
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold mb-4 flex items-center gap-2 text-amber-600"><Users size={18} /> Funcionários</h3>
-          <div className="space-y-3 mb-4">
-            <input value={empName} onChange={e => setEmpName(e.target.value)} placeholder="Nome completo" className={inputClass + " w-full"} />
-            <div className="flex gap-2">
-              <select value={empCatId} onChange={e => setEmpCatId(e.target.value)} className={selectClass}>
-                <option value="">Selecione a Categoria</option>
-                {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 border rounded-lg text-[10px] font-bold cursor-pointer uppercase text-slate-600">
-                <input type="checkbox" checked={empRestricted} onChange={e => setEmpRestricted(e.target.checked)} /> Restrição
-              </label>
+const TabBtn: React.FC<{ active: boolean; onClick: () => void; label: string }> = ({ active, onClick, label }) => (
+  <button onClick={onClick} className={`px-10 py-5 text-xs font-black uppercase tracking-widest transition-all rounded-2xl ${active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+    {label}
+  </button>
+);
+
+const CategorySetup: React.FC<any> = ({ categories, onAdd, onDel }) => {
+  const [name, setName] = useState('');
+  return (
+    <div className="space-y-10 max-w-2xl">
+      <div className="flex gap-4">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nova categoria de funcionário..." className="flex-1 bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 transition-all font-medium" />
+        <button onClick={() => { if(name){ onAdd(name); setName(''); } }} className="bg-slate-900 text-white px-8 rounded-[20px] font-black hover:bg-black transition active:scale-95"><Plus size={24}/></button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {categories.map((c: any) => (
+          <div key={c.id} className="group flex justify-between items-center p-5 bg-slate-50/50 border border-slate-100 rounded-[24px] hover:bg-white hover:shadow-xl transition-all">
+            <span className="font-bold text-slate-700">{c.name}</span>
+            <button onClick={() => onDel(c.id)} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const EmployeeSetup: React.FC<any> = ({ employees, categories, onAdd, onDel }) => {
+  const [name, setName] = useState('');
+  const [cat, setCat] = useState('');
+  const [res, setRes] = useState(false);
+  return (
+    <div className="space-y-10">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome completo" className="md:col-span-2 bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 transition-all font-medium" />
+        <select value={cat} onChange={e => setCat(e.target.value)} className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 font-bold text-slate-500">
+          <option value="">Selecione Categoria...</option>
+          {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <button onClick={() => { if(name && cat){ onAdd(name, cat, res); setName(''); setCat(''); setRes(false); } }} className="bg-blue-600 text-white py-4 rounded-[20px] font-black hover:bg-blue-700 transition active:scale-95 shadow-lg shadow-blue-500/20">Salvar</button>
+      </div>
+      <label className="flex items-center gap-4 p-6 bg-slate-50/50 border border-slate-100 rounded-[24px] w-fit cursor-pointer hover:bg-white transition-all">
+        <div className={`w-10 h-6 rounded-full transition-colors relative ${res ? 'bg-red-500' : 'bg-slate-200'}`}>
+           <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${res ? 'left-5' : 'left-1'}`}></div>
+        </div>
+        <input type="checkbox" className="hidden" checked={res} onChange={e => setRes(e.target.checked)} />
+        <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Este colaborador possui restrição (não pode ficar sozinho)</span>
+      </label>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {employees.map((e: any) => (
+          <div key={e.id} className="p-6 bg-slate-50/50 border border-slate-100 rounded-[28px] flex justify-between items-center group hover:bg-white hover:shadow-xl transition-all">
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-black text-slate-400 border border-slate-100 group-hover:bg-blue-50 transition-colors">{e.name.substring(0,2).toUpperCase()}</div>
+               <div>
+                  <p className="font-black text-slate-900 flex items-center gap-2 tracking-tight">{e.name} {e.isRestricted && <ShieldAlert size={16} className="text-red-500"/>}</p>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{categories.find((c: any) => c.id === e.categoryId)?.name}</p>
+               </div>
             </div>
-            <button onClick={() => { if(empName && empCatId){ onAddEmp(empName, empCatId, empRestricted); setEmpName(''); setEmpCatId(''); setEmpRestricted(false); } }} className="w-full bg-slate-900 text-white py-2.5 rounded-lg font-bold hover:bg-slate-800 transition">Adicionar Funcionário</button>
+            <button onClick={() => onDel(e.id)} className="text-slate-200 hover:text-red-500 transition-colors p-2"><Trash2 size={20}/></button>
           </div>
-          <div className="space-y-2 max-h-40 overflow-auto">
-            {state.employees.map(e => (
-              <div key={e.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg text-sm border border-slate-100 hover:border-slate-200 transition">
-                <span className="flex items-center gap-2 font-medium">{e.name} {e.isRestricted && <ShieldAlert size={14} className="text-red-500" />}</span>
-                <button onClick={() => onDelEmp(e.id)} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold mb-4 flex items-center gap-2 text-blue-600"><Building2 size={18} /> Ambientes</h3>
-          <div className="space-y-3 mb-4">
-            <input value={envName} onChange={e => setEnvName(e.target.value)} placeholder="Nome do ambiente" className={inputClass + " w-full"} />
-            <div className="p-3 bg-slate-50 rounded-lg space-y-2 border border-slate-100">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Pessoas por Categoria:</p>
-              {state.categories.map(cat => (
-                <div key={cat.id} className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-700">{cat.name}</span>
-                  <input type="number" min="0" value={envReqs[cat.id] || 0} onChange={e => setEnvReqs({ ...envReqs, [cat.id]: parseInt(e.target.value) || 0 })} className="w-16 border rounded px-2 py-1 text-center font-bold" />
+const EnvironmentSetup: React.FC<any> = ({ environments, categories, onAdd, onDel }) => {
+  const [name, setName] = useState('');
+  const [reqs, setReqs] = useState<any>({});
+  return (
+    <div className="space-y-10 max-w-5xl">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        <div className="space-y-6">
+          <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block ml-1">Configuração do Ambiente</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do local (ex: Portaria A)" className="w-full bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 font-medium transition-all" />
+          
+          <div className="bg-slate-50 p-8 rounded-[32px] space-y-5 border border-slate-100 shadow-inner">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Necessidade diária de pessoal:</p>
+            {categories.map((c: any) => (
+              <div key={c.id} className="flex items-center justify-between group">
+                <span className="text-sm font-bold text-slate-600 group-hover:text-blue-600 transition-colors">{c.name}</span>
+                <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-xl px-2">
+                   <input type="number" min="0" value={reqs[c.id] || 0} onChange={e => setReqs({...reqs, [c.id]: parseInt(e.target.value)||0})} className="w-16 py-2 text-center font-black text-slate-900 outline-none" />
                 </div>
-              ))}
-            </div>
-            <button onClick={() => { if(envName){ onAddEnv(envName, envReqs); setEnvName(''); setEnvReqs({}); } }} className="w-full bg-slate-900 text-white py-2.5 rounded-lg font-bold hover:bg-slate-800 transition">Salvar Ambiente</button>
-          </div>
-          <div className="space-y-2 max-h-40 overflow-auto">
-            {state.environments.map(env => (
-              <div key={env.id} className="p-3 bg-slate-50 rounded-lg text-sm flex justify-between border border-slate-100">
-                <span className="font-bold">{env.name}</span>
-                <button onClick={() => onDelEnv(env.id)} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16} /></button>
               </div>
             ))}
           </div>
+          <button onClick={() => { if(name){ onAdd(name, reqs); setName(''); setReqs({}); } }} className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black hover:bg-black transition-all shadow-xl shadow-slate-900/10 active:scale-95">Adicionar Ambiente</button>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold mb-4 flex items-center gap-2 text-purple-600"><CalendarDays size={18} /> Datas Especiais</h3>
-          <div className="space-y-3 mb-4">
-            <div className="flex gap-2">
-              <input type="date" value={dayDate} onChange={e => setDayDate(e.target.value)} className={inputClass} />
-              <select value={dayType} onChange={e => setDayType(e.target.value as any)} className={selectClass}>
-                <option value="holiday">Feriado</option>
-                <option value="sunday">Domingo</option>
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <input value={dayName} onChange={e => setDayName(e.target.value)} placeholder="Descrição do feriado" className={inputClass} />
-              <button onClick={() => { if(dayDate && dayName){ onAddDay(dayDate, dayName, dayType); setDayDate(''); setDayName(''); } }} className="bg-slate-900 text-white px-4 rounded-lg hover:bg-slate-800 transition"><Plus size={18} /></button>
-            </div>
-          </div>
-          <div className="space-y-2 max-h-40 overflow-auto">
-            {state.specialDays.map(d => (
-              <div key={d.date} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg text-xs border border-slate-100">
-                <span><b className="text-slate-900">{d.date}</b> - {d.name}</span>
-                <button onClick={() => onDelDay(d.date)} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16} /></button>
+        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+          {environments.map((env: any) => (
+            <div key={env.id} className="p-6 bg-slate-50/50 border border-slate-100 rounded-[32px] flex justify-between items-start group hover:bg-white hover:shadow-xl transition-all">
+              <div className="space-y-3">
+                <p className="font-black text-slate-900 text-lg tracking-tight">{env.name}</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(env.requirements).map(([cid, qty]: any) => qty > 0 && (
+                    <div key={cid} className="text-[9px] font-black bg-white border border-slate-100 px-3 py-1.5 rounded-xl uppercase text-slate-500 shadow-sm flex items-center">
+                      {categories.find((c: any) => c.id === cid)?.name}: <span className="text-blue-600 ml-1 font-black">{qty}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+              <button onClick={() => onDel(env.id)} className="text-slate-200 hover:text-red-500 transition-colors p-2"><Trash2 size={18}/></button>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-const CalendarView: React.FC<{ state: AppState; currentMonth: string; onMonthChange: (o: number) => void; onSwap: (d: string, o: string, n: string) => void; onGenerate: () => void; loading: boolean; }> = ({ state, currentMonth, onMonthChange, onSwap, onGenerate, loading }) => {
-  const [year, month] = currentMonth.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const monthName = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  const currentSchedule = state.schedules[currentMonth] || [];
-
-  const days = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = i + 1;
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const special = state.specialDays.find(sd => sd.date === dateStr);
-    const entries = currentSchedule.filter(s => s.date === dateStr);
-    return { d, dateStr, special, entries };
-  });
-
+const DaySetup: React.FC<any> = ({ days, onAdd, onDel }) => {
+  const [date, setDate] = useState('');
+  const [name, setName] = useState('');
+  const [type, setType] = useState('holiday');
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-2xl font-bold capitalize text-slate-800">{monthName}</h2>
-        <div className="flex gap-2">
-          <button onClick={() => onMonthChange(-1)} className="p-2 border bg-white rounded-lg hover:bg-slate-50 transition"><ChevronLeft size={20} /></button>
-          <button onClick={() => onMonthChange(1)} className="p-2 border bg-white rounded-lg hover:bg-slate-50 transition"><ChevronRight size={20} /></button>
-          <button onClick={onGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition shadow-md disabled:opacity-50">
-            {loading ? <RotateCw className="animate-spin" /> : <CalendarCheck />} Gerar IA
-          </button>
-        </div>
-      </header>
-      {currentSchedule.length === 0 ? (
-        <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-16 text-center text-slate-400">
-           <CalendarDays size={48} className="mx-auto mb-4 opacity-20" />
-           <p className="text-lg font-medium">Nenhuma escala para este mês.</p>
-           <p className="text-sm">Clique em "Gerar IA" para criar a sugestão automaticamente.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {days.map(day => (
-            <div key={day.dateStr} className={`bg-white p-4 rounded-xl border ${day.special ? 'border-red-200 bg-red-50/20' : 'border-slate-200 shadow-sm'} hover:shadow-md transition`}>
-              <div className="flex justify-between items-start mb-3">
-                <span className="font-bold text-lg text-slate-900">{day.d}</span>
-                {day.special && <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase tracking-tighter">{day.special.name}</span>}
-              </div>
-              <div className="space-y-2">
-                {day.entries.map(entry => {
-                  const emp = state.employees.find(e => e.id === entry.employeeId);
-                  const env = state.environments.find(e => e.id === entry.environmentId);
-                  return (
-                    <div key={entry.employeeId + entry.environmentId} className="p-2.5 border border-slate-100 rounded-lg text-[10px] bg-slate-50/50">
-                      <div className="flex justify-between items-center font-bold text-slate-800 gap-2 mb-1">
-                        <span className="truncate">{emp?.name || '---'}</span>
-                        <select 
-                          onChange={(e) => onSwap(day.dateStr, entry.employeeId, e.target.value)} 
-                          className="text-blue-500 bg-transparent border-none p-0 cursor-pointer focus:ring-0 text-[9px] font-black uppercase"
-                          value={entry.employeeId}
-                        >
-                          <option value={entry.employeeId}>Alt</option>
-                          {state.employees
-                            .filter(e => e.categoryId === entry.categoryId && e.id !== entry.employeeId)
-                            .map(e => <option key={e.id} value={e.id}>{e.name}</option>)
-                          }
-                        </select>
-                      </div>
-                      <div className="text-slate-400 flex items-center gap-1"><Building2 size={8} /> {env?.name}</div>
-                    </div>
-                  );
-                })}
+    <div className="space-y-10">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 font-bold text-slate-600" />
+        <select value={type} onChange={e => setType(e.target.value)} className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 font-bold text-slate-600">
+          <option value="holiday">Feriado</option>
+          <option value="sunday">Domingo</option>
+        </select>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Título do evento" className="bg-slate-50 border border-slate-100 px-6 py-4 rounded-[20px] outline-none focus:ring-4 focus:ring-blue-100 font-medium" />
+        <button onClick={() => { if(date && name){ onAdd(date, name, type); setDate(''); setName(''); } }} className="bg-purple-600 text-white rounded-[20px] font-black hover:bg-purple-700 transition active:scale-95 shadow-lg shadow-purple-500/20">Registrar</button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {days.map((d: any) => (
+          <div key={d.date} className="p-6 bg-slate-50/50 border border-slate-100 rounded-[28px] flex justify-between items-center group hover:bg-white hover:shadow-xl transition-all">
+            <div className="flex items-center gap-4">
+              <div className="bg-white p-3 rounded-2xl border border-slate-100 text-purple-600 shadow-sm"><CalendarDays size={20}/></div>
+              <div>
+                <p className="font-black text-slate-900 leading-tight">{new Date(d.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
+                <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mt-1">{d.name}</p>
               </div>
             </div>
-          ))}
+            <button onClick={() => onDel(d.date)} className="text-slate-200 hover:text-red-500 transition-colors p-2"><Trash2 size={18}/></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwap, onGenerate, loading }) => {
+  const [y, m] = currentMonth.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const entries = state.schedules[currentMonth] || [];
+
+  return (
+    <div className="space-y-10">
+      <header className="flex flex-col md:flex-row justify-between items-center gap-8 bg-white p-10 rounded-[40px] shadow-sm border border-slate-200/50">
+        <div className="flex items-center gap-6">
+          <button onClick={() => onMonthChange(-1)} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-90"><ChevronLeft size={24}/></button>
+          <h2 className="text-3xl font-black text-slate-900 capitalize min-w-[220px] text-center tracking-tight leading-none">{monthLabel}</h2>
+          <button onClick={() => onMonthChange(1)} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-90"><ChevronRight size={24}/></button>
+        </div>
+        <button onClick={onGenerate} disabled={loading} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-[24px] font-black shadow-2xl shadow-blue-500/30 active:scale-95 transition-all text-lg flex items-center justify-center gap-2">
+           <CalendarCheck size={20} /> Otimizar Escala via IA
+        </button>
+      </header>
+
+      {entries.length === 0 ? (
+        <div className="bg-white p-24 rounded-[60px] border-2 border-dashed border-slate-200 text-center space-y-6">
+          <div className="bg-slate-50 w-32 h-32 rounded-[48px] flex items-center justify-center mx-auto text-slate-200 shadow-inner"><CalendarDays size={64}/></div>
+          <div className="space-y-2">
+            <h3 className="text-2xl font-black text-slate-400">Sem registros para {monthLabel}</h3>
+            <p className="text-slate-400 max-w-sm mx-auto font-medium">Use a inteligência artificial para distribuir a equipe de forma justa e alternada.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
+          {Array.from({length: daysInMonth}, (_, i) => {
+            const day = i + 1;
+            const ds = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const special = state.specialDays.find((sd: any) => sd.date === ds);
+            const dayEntries = entries.filter((e: any) => e.date === ds);
+            return (
+              <div key={ds} className={`bg-white rounded-[40px] p-8 border ${special ? 'border-amber-300 ring-8 ring-amber-50 shadow-xl' : 'border-slate-200/50 shadow-sm'} flex flex-col min-h-[220px] transition-all hover:shadow-2xl hover:-translate-y-1`}>
+                <div className="flex justify-between items-start mb-6">
+                  <span className="text-3xl font-black text-slate-900 tracking-tighter leading-none">{day}</span>
+                  {special && <span className="text-[9px] font-black bg-amber-500 text-white px-3 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-amber-500/20">{special.name}</span>}
+                </div>
+                <div className="space-y-3 flex-1 overflow-visible">
+                  {dayEntries.map((e: any) => {
+                    const emp = state.employees.find((emp: any) => emp.id === e.employeeId);
+                    const env = state.environments.find((env: any) => env.id === e.environmentId);
+                    return (
+                      <div key={e.employeeId + e.environmentId} className="group relative bg-slate-50 p-4 rounded-[20px] border border-slate-100 hover:bg-blue-600 transition-all cursor-default overflow-hidden">
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="text-[12px] font-black text-slate-800 group-hover:text-white leading-tight truncate pr-4">{emp?.name || 'Não alocado'}</p>
+                          <div className="opacity-0 group-hover:opacity-100 absolute inset-0 w-full h-full flex items-center justify-center">
+                            <select 
+                              className="w-full h-full cursor-pointer bg-blue-600 border-none appearance-none font-black text-[11px] text-white text-center outline-none px-4"
+                              value={e.employeeId}
+                              onChange={(ev) => onSwap(ds, e.employeeId, ev.target.value)}
+                            >
+                              <option disabled value="">Substituir...</option>
+                              {state.employees.filter((x: any) => x.categoryId === e.categoryId).map((x: any) => (
+                                <option key={x.id} value={x.id} className="text-slate-900">{x.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-400 group-hover:text-blue-200 mt-1 uppercase flex items-center gap-1.5"><Building2 size={10}/> {env?.name}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
 
-const EmployeesList: React.FC<{ state: AppState; currentMonth: string }> = ({ state, currentMonth }) => {
+const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
   const [search, setSearch] = useState('');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-
-  const filtered = useMemo(() => {
-    let list = state.employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
-    list.sort((a, b) => {
-      const cmp = a.name.localeCompare(b.name);
-      return sortOrder === 'asc' ? cmp : -cmp;
-    });
-    return list;
-  }, [state.employees, search, sortOrder]);
+  const filtered = state.employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-2xl font-bold text-slate-800">Colaboradores</h2>
-        <div className="flex gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar por nome..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl bg-white shadow-sm outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <button 
-            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-            className="p-2 border border-slate-200 bg-white rounded-xl shadow-sm hover:bg-slate-50 transition"
-          >
-            {sortOrder === 'asc' ? <ArrowDownAz size={20} /> : <ArrowUpAz size={20} />}
-          </button>
+    <div className="space-y-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight">Base da Equipe</h2>
+          <p className="text-slate-500 font-semibold mt-1">Controle de integrantes e suas classificações.</p>
         </div>
-      </header>
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Localizar integrante..." className="w-full pl-14 pr-6 py-4.5 bg-white border border-slate-200/50 rounded-[24px] shadow-sm outline-none focus:ring-4 focus:ring-blue-100 font-medium transition-all" />
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-[40px] border border-slate-200/50 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="p-4 font-bold text-slate-600 uppercase text-[10px] tracking-widest">Colaborador</th>
-                <th className="p-4 font-bold text-slate-600 uppercase text-[10px] tracking-widest">Categoria</th>
-                <th className="p-4 font-bold text-slate-600 uppercase text-[10px] tracking-widest">Status</th>
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="p-8 text-[11px] font-black text-slate-400 uppercase tracking-widest">Colaborador</th>
+                <th className="p-8 text-[11px] font-black text-slate-400 uppercase tracking-widest">Atuação</th>
+                <th className="p-8 text-[11px] font-black text-slate-400 uppercase tracking-widest">Perfil Operacional</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.length === 0 ? (
-                <tr>
-                   <td colSpan={3} className="p-8 text-center text-slate-400 italic">Nenhum funcionário encontrado.</td>
-                </tr>
-              ) : (
-                filtered.map(emp => (
-                  <tr key={emp.id} className="hover:bg-slate-50 transition group">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">
-                          {emp.name.substring(0, 2).toUpperCase()}
-                        </div>
-                        <span className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                          {emp.name}
-                          {emp.isRestricted && <ShieldAlert size={14} className="inline ml-2 text-red-500" />}
-                        </span>
+              {filtered.map(e => (
+                <tr key={e.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="p-8">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 bg-slate-50 text-slate-400 rounded-[20px] flex items-center justify-center font-black text-sm border border-slate-100 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                        {e.name.substring(0,2).toUpperCase()}
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <span className="px-2 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500 uppercase border border-slate-200">
-                        {state.categories.find(c => c.id === emp.categoryId)?.name || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      {emp.isRestricted ? (
-                        <span className="text-red-600 bg-red-50 px-3 py-1 rounded-full border border-red-100 font-bold text-[9px] uppercase tracking-tighter">Com Restrição</span>
-                      ) : (
-                        <span className="text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100 font-bold text-[9px] uppercase tracking-tighter">Padrão</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                      <span className="font-black text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{e.name}</span>
+                    </div>
+                  </td>
+                  <td className="p-8">
+                    <span className="px-5 py-2 bg-white border border-slate-200 rounded-[14px] text-[10px] font-black text-slate-500 uppercase tracking-widest shadow-sm">
+                      {state.categories.find(c => c.id === e.categoryId)?.name}
+                    </span>
+                  </td>
+                  <td className="p-8">
+                    {e.isRestricted ? (
+                      <span className="flex items-center gap-2 text-red-500 font-black text-[11px] uppercase tracking-tighter bg-red-50 px-4 py-2 rounded-xl border border-red-100 w-fit shadow-sm"><ShieldAlert size={16}/> Requer Monitoramento</span>
+                    ) : (
+                      <span className="text-emerald-500 font-black text-[11px] uppercase tracking-tighter bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 w-fit shadow-sm flex items-center gap-2">Disponível / Padrão</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="p-20 text-center text-slate-300 font-bold italic">Nenhum registro encontrado.</td>
+                </tr>
               )}
             </tbody>
           </table>
