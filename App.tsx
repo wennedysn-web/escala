@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -25,7 +24,8 @@ import {
   Info,
   Trash,
   Database,
-  Code
+  Code,
+  KeyRound
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -35,6 +35,10 @@ declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
+  }
+  interface Window {
+    // Fixed: Made optional to match existing ambient declarations and avoid "identical modifiers" error.
+    aistudio?: AIStudio;
   }
 }
 
@@ -56,6 +60,7 @@ const App: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState(false);
 
   useEffect(() => {
     const localSess = localStorage.getItem('escala_session');
@@ -78,6 +83,19 @@ const App: React.FC = () => {
       loadInitialData();
     }
   }, [session]);
+
+  // Added: Initial check for API key presence as per guidelines
+  useEffect(() => {
+    const checkApiKey = async () => {
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          setApiError(true);
+        }
+      }
+    };
+    checkApiKey();
+  }, []);
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -142,6 +160,17 @@ const App: React.FC = () => {
     setSession(null);
   };
 
+  const handleSelectApiKey = async () => {
+    try {
+      // Fixed: Safe access using optional chaining
+      await window.aistudio?.openSelectKey();
+      setApiError(false);
+      setError(null);
+    } catch (e) {
+      console.error("Erro ao abrir seletor de chave:", e);
+    }
+  };
+
   const handleGenerateSchedule = async () => {
     if (state.employees.length === 0 || state.environments.length === 0) {
       setError("Cadastre a equipe e os ambientes nas configurações primeiro.");
@@ -156,6 +185,8 @@ const App: React.FC = () => {
 
     setLoading(true);
     setError(null);
+    setApiError(false);
+
     try {
       const entries = await generateScheduleWithAI(
         currentMonth,
@@ -189,7 +220,14 @@ const App: React.FC = () => {
       
       alert("Escala gerada com sucesso!");
     } catch (err: any) {
-      setError(handleSupabaseError(err));
+      const msg = err.message || "";
+      // Improved: Handling "Requested entity was not found" and other key errors as per guidelines
+      if (msg.includes('403') || msg.includes('API key') || msg.includes('leaked') || msg.includes('PERMISSION_DENIED') || msg.includes('Requested entity was not found')) {
+        setApiError(true);
+        setError("Erro na API Gemini: Sua chave de API atual expirou ou foi bloqueada. Você precisa configurar uma chave pessoal.");
+      } else {
+        setError(handleSupabaseError(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -273,16 +311,33 @@ const App: React.FC = () => {
             <div className="bg-slate-900 p-10 rounded-[40px] shadow-2xl flex flex-col items-center gap-6 border border-slate-800">
               <div className="w-16 h-16 border-4 border-slate-800 border-t-blue-600 rounded-full animate-spin"></div>
               <div className="text-center">
-                <p className="font-black text-xl text-slate-50">Processando dados...</p>
-                <p className="text-slate-400 text-sm mt-1 font-medium">Aguarde enquanto sincronizamos as informações.</p>
+                <p className="font-black text-xl text-slate-50">Processando...</p>
+                <p className="text-slate-400 text-sm mt-1 font-medium">Aguarde a resposta da Inteligência Artificial.</p>
               </div>
             </div>
           </div>
         )}
         
         <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {activeTab === 'dashboard' && <Dashboard state={state} onGenerate={handleGenerateSchedule} loading={loading} error={error} />}
-          {activeTab === 'setup' && <Setup state={state} loadData={loadInitialData} onReset={resetDatabase} error={error} />}
+          {activeTab === 'dashboard' && (
+            <Dashboard 
+              state={state} 
+              onGenerate={handleGenerateSchedule} 
+              loading={loading} 
+              error={error} 
+              apiError={apiError}
+              onSelectKey={handleSelectApiKey}
+            />
+          )}
+          {activeTab === 'setup' && (
+            <Setup 
+              state={state} 
+              loadData={loadInitialData} 
+              onReset={resetDatabase} 
+              error={error} 
+              onSelectKey={handleSelectApiKey}
+            />
+          )}
           {activeTab === 'calendar' && (
             <CalendarView 
               state={state} 
@@ -381,7 +436,7 @@ const Login: React.FC<{ setSession: (s: any) => void }> = ({ setSession }) => {
   );
 };
 
-const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null }> = ({ state, onGenerate, loading, error }) => (
+const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: boolean; error: string | null; apiError: boolean; onSelectKey: () => void }> = ({ state, onGenerate, loading, error, apiError, onSelectKey }) => (
   <div className="space-y-10">
     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-slate-900 p-10 rounded-[40px] shadow-sm border border-slate-800">
       <div>
@@ -393,7 +448,27 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
       </button>
     </div>
     
-    {error && (
+    {apiError && (
+      <div className="bg-amber-950/20 p-8 rounded-[40px] border-2 border-amber-900/50 flex flex-col md:flex-row items-center gap-8 animate-in zoom-in-95">
+        <div className="p-5 bg-amber-900/30 text-amber-500 rounded-3xl">
+          <KeyRound size={40} />
+        </div>
+        <div className="flex-1 space-y-2 text-center md:text-left">
+          <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">API Key Bloqueada</h3>
+          <p className="text-slate-300 font-medium">A chave de inteligência artificial padrão foi desativada. Para continuar gerando escalas, vincule sua própria chave de API.</p>
+          <div className="pt-2">
+             <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline text-xs font-bold flex items-center justify-center md:justify-start gap-1">
+               <Info size={14}/> Saiba mais sobre faturamento da API
+             </a>
+          </div>
+        </div>
+        <button onClick={onSelectKey} className="bg-amber-600 hover:bg-amber-700 text-white px-10 py-4 rounded-2xl font-black shadow-lg transition-all whitespace-nowrap">
+          Vincular Minha Chave
+        </button>
+      </div>
+    )}
+
+    {error && !apiError && (
       <div className="bg-red-950/20 p-6 rounded-[30px] border border-red-900/50 flex items-center gap-4 text-red-400 animate-in zoom-in-95">
         <AlertCircle size={24} />
         <p className="font-bold">{error}</p>
@@ -419,7 +494,7 @@ const StatCard: React.FC<any> = ({ icon, label, value, color }) => (
   </div>
 );
 
-const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null }> = ({ state, loadData, onReset, error }) => {
+const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => void; error: string | null; onSelectKey: () => void }> = ({ state, loadData, onReset, error, onSelectKey }) => {
   const [tab, setTab] = useState<'cat' | 'emp' | 'env' | 'day' | 'sys'>('cat');
   const [loading, setLoading] = useState(false);
 
@@ -428,7 +503,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
     const { error } = await supabase.from(table).insert([payload]);
     if (error) {
       alert("Erro ao salvar no Supabase: " + error.message);
-      loadData(); // Tenta recarregar para ver se persistiu
+      loadData();
     } else {
       loadData();
     }
@@ -479,7 +554,28 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
         {tab === 'env' && <EnvironmentSetup environments={state.environments} categories={state.categories} onAdd={(n: string, r: any) => handleAdd('environments', { name: n, requirements: r })} onDel={(id: string) => handleDel('environments', id)} />}
         {tab === 'day' && <DaySetup days={state.specialDays} onAdd={(d: string, n: string, t: any) => handleAdd('special_days', { date: d, name: n, type: t })} onDel={(date: string) => handleDel('special_days', date, 'date')} />}
         {tab === 'sys' && (
-          <div className="space-y-10 animate-in fade-in">
+          <div className="space-y-12 animate-in fade-in">
+             <div className="bg-slate-950/50 border border-slate-800 p-10 rounded-[40px] space-y-6">
+                <div className="flex items-center gap-4 text-blue-500">
+                  <KeyRound size={32} />
+                  <h3 className="text-2xl font-black uppercase tracking-tight">Chave da Inteligência Artificial</h3>
+                </div>
+                <p className="text-slate-400 font-bold max-w-xl">
+                  Se você estiver enfrentando erros de geração (como o erro 403), use o botão abaixo para configurar sua própria chave de API paga.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <button 
+                    onClick={onSelectKey}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3"
+                  >
+                    <RotateCw size={20} /> Alterar Chave API
+                  </button>
+                  <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-8 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-2xl font-bold hover:bg-slate-700 transition-all">
+                    <ExternalLink size={18} /> Ver Documentação de Faturamento
+                  </a>
+                </div>
+             </div>
+
              <div className="bg-red-950/20 border-2 border-red-900/50 p-10 rounded-[40px] space-y-6">
                 <div className="flex items-center gap-4 text-red-500">
                   <ShieldAlert size={32} />
@@ -491,7 +587,7 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                 </p>
                 <button 
                   onClick={onReset}
-                  className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-red-600/20 transition-all flex items-center gap-3"
+                  className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-red-600/20 transition-all flex items-center justify-center gap-3"
                 >
                   <Trash size={20} /> Limpar Toda a Base de Dados
                 </button>
