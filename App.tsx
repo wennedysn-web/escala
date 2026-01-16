@@ -15,20 +15,15 @@ import {
   ShieldAlert,
   LogOut,
   Search,
-  Lock,
   LayoutDashboard,
   Settings,
-  UserCheck,
-  User,
-  Key,
-  ExternalLink,
+  UserPlus,
+  KeyRound,
   Info,
+  ExternalLink,
   Trash,
   Database,
-  Code,
-  KeyRound,
-  ShieldCheck,
-  UserPlus
+  ShieldCheck
 } from 'lucide-react';
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry, AppState } from './types';
 import { generateScheduleWithAI } from './geminiService';
@@ -90,7 +85,8 @@ const App: React.FC = () => {
     const checkApiKey = async () => {
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
+        // Se process.env.API_KEY não existir e não houver chave selecionada, alerta o erro de API
+        if (!hasKey && !process.env.API_KEY) {
           setApiError(true);
         }
       }
@@ -142,9 +138,7 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error("Erro ao carregar dados:", err);
-      if (!err.message?.includes('JSON object requested, but 0 rows were returned')) {
-        setError(handleSupabaseError(err));
-      }
+      setError(handleSupabaseError(err));
     } finally {
       setLoading(false);
     }
@@ -174,6 +168,15 @@ const App: React.FC = () => {
   };
 
   const handleGenerateSchedule = async () => {
+    // Verifica se a chave de API está presente antes de tentar gerar
+    if (!process.env.API_KEY && window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await handleSelectApiKey();
+        // Após abrir o seletor, assumimos que o usuário selecionou e prosseguimos
+      }
+    }
+
     if (state.employees.length === 0 || state.environments.length === 0) {
       setError("Cadastre a equipe e os ambientes nas configurações primeiro.");
       return;
@@ -204,7 +207,7 @@ const App: React.FC = () => {
 
       await supabase.from('schedules').delete().eq('month_key', currentMonth);
 
-      const dbEntries = entries.map(e => ({
+      const dbEntries = entries.map((e: ScheduleEntry) => ({
         date: e.date,
         employee_id: e.employeeId,
         environment_id: e.environmentId,
@@ -223,9 +226,9 @@ const App: React.FC = () => {
       alert("Escala gerada com sucesso!");
     } catch (err: any) {
       const msg = err.message || "";
-      if (msg.includes('403') || msg.includes('API key') || msg.includes('leaked') || msg.includes('PERMISSION_DENIED') || msg.includes('Requested entity was not found')) {
+      if (msg.includes('403') || msg.includes('API key') || msg.includes('PERMISSION_DENIED') || msg.includes('Requested entity was not found')) {
         setApiError(true);
-        setError("Erro na API Gemini: A chave atual não funcionou.");
+        setError("Erro na API Gemini: A chave de API não foi detectada ou é inválida.");
       } else {
         setError(handleSupabaseError(err));
       }
@@ -237,7 +240,7 @@ const App: React.FC = () => {
   const swapEmployee = async (date: string, oldEmpId: string, newEmpId: string) => {
     setState(prev => {
       const monthSchedules = [...(prev.schedules[currentMonth] || [])];
-      const index = monthSchedules.findIndex(s => s.date === date && s.employeeId === oldEmpId);
+      const index = monthSchedules.findIndex((s: ScheduleEntry) => s.date === date && s.employeeId === oldEmpId);
       if (index > -1) {
         monthSchedules[index] = { ...monthSchedules[index], employeeId: newEmpId };
       }
@@ -277,7 +280,7 @@ const App: React.FC = () => {
 
   const removeEntry = async (date: string, envId: string, empId: string) => {
     setState(prev => {
-      const current = [...(prev.schedules[currentMonth] || [])].filter(e => !(e.date === date && e.environmentId === envId && e.employeeId === empId));
+      const current = [...(prev.schedules[currentMonth] || [])].filter((e: ScheduleEntry) => !(e.date === date && e.environmentId === envId && e.employeeId === empId));
       return { ...prev, schedules: { ...prev.schedules, [currentMonth]: current } };
     });
 
@@ -406,9 +409,6 @@ const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.Reac
   </button>
 );
 
-/**
- * StatCard component to fix the "Cannot find name 'StatCard'" errors.
- */
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number | string; color: string }> = ({ icon, label, value, color }) => (
   <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-800 shadow-sm flex flex-col gap-6 transition-all hover:shadow-xl hover:border-slate-700 bg-slate-900/50">
     <div className={`w-16 h-16 ${color} rounded-[24px] flex items-center justify-center shadow-inner`}>
@@ -512,7 +512,7 @@ const Dashboard: React.FC<{ state: AppState; onGenerate: () => void; loading: bo
         </div>
         <div className="flex-1 space-y-2 text-center md:text-left">
           <h3 className="text-xl font-black text-amber-500 uppercase tracking-tight">Problema com API Key</h3>
-          <p className="text-slate-300 font-medium text-balance">Não foi possível detectar uma Chave de API ativa no ambiente Studio.</p>
+          <p className="text-slate-300 font-medium text-balance">Não foi possível detectar uma Chave de API ativa. Para usar a IA, é necessário selecionar uma chave.</p>
           <div className="pt-2">
              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline text-xs font-bold flex items-center justify-center md:justify-start gap-1">
                <Info size={14}/> Faturamento da API
@@ -589,7 +589,6 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
             ALTER TABLE environments DISABLE ROW LEVEL SECURITY;
             ALTER TABLE special_days DISABLE ROW LEVEL SECURITY;
             ALTER TABLE schedules DISABLE ROW LEVEL SECURITY;
-            ALTER TABLE settings_escala DISABLE ROW LEVEL SECURITY;
           </div>
         </div>
       )}
@@ -606,17 +605,9 @@ const Setup: React.FC<{ state: AppState; loadData: () => void; onReset: () => vo
                   <KeyRound size={32} />
                   <h3 className="text-2xl font-black uppercase tracking-tight">Chave da Inteligência Artificial</h3>
                 </div>
-                <div className="space-y-4">
-                  <p className="text-slate-400 font-bold max-w-xl text-balance">Para o funcionamento correto da geração de escalas, é necessário vincular uma chave de API do Gemini Studio (GCP Paid Project).</p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <button onClick={onSelectKey} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3">
-                    <RotateCw size={20} /> Vincular/Trocar Chave de API
-                  </button>
-                  <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-8 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-2xl font-bold hover:bg-slate-700 transition-all">
-                    <ExternalLink size={18} /> Ver Faturamento
-                  </a>
-                </div>
+                <button onClick={onSelectKey} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-3">
+                  <RotateCw size={20} /> Vincular/Trocar Chave de API
+                </button>
              </div>
 
              <div className="bg-red-950/20 border-2 border-red-900/50 p-10 rounded-[40px] space-y-6">
@@ -671,7 +662,7 @@ const EmployeeSetup: React.FC<any> = ({ employees, categories, onAdd, onDel }) =
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome" className="md:col-span-2 bg-slate-800 border border-slate-700 px-6 py-4 rounded-[20px] text-white font-bold outline-none" />
         <select value={cat} onChange={e => setCat(e.target.value)} className="bg-slate-800 border border-slate-700 px-6 py-4 rounded-[20px] text-white font-bold outline-none">
           <option value="">Categoria</option>
-          {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {categories.map((c: Category) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <button onClick={() => { if(name && cat){ onAdd(name, cat, res); setName(''); setCat(''); setRes(false); } }} className="bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-[20px] font-black shadow-lg">Cadastrar</button>
       </div>
@@ -820,7 +811,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                 
                 <div className="space-y-6 flex-1">
                   {state.environments.map((env: Environment) => {
-                    const envEntries = dayEntries.filter((e: any) => e.environmentId === env.id);
+                    const envEntries = dayEntries.filter((e: ScheduleEntry) => e.environmentId === env.id);
                     const hasReqs = Object.values(env.requirements).some((v: any) => v > 0);
                     if (!hasReqs && envEntries.length === 0) return null;
 
@@ -832,11 +823,11 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                               <button className="text-slate-600 hover:text-blue-500 transition-colors"><UserPlus size={14}/></button>
                               <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl z-30 p-2">
                                 <p className="text-[8px] font-black text-slate-500 uppercase p-2 border-b border-slate-700 mb-1">Adicionar Restrito</p>
-                                {state.employees.filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id)).length === 0 ? (
+                                {state.employees.filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: ScheduleEntry) => de.employeeId === emp.id)).length === 0 ? (
                                   <p className="text-[10px] text-slate-600 p-2 italic">Nenhum disponível</p>
                                 ) : (
                                   state.employees
-                                    .filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: any) => de.employeeId === emp.id))
+                                    .filter((emp: Employee) => emp.isRestricted && !dayEntries.some((de: ScheduleEntry) => de.employeeId === emp.id))
                                     .map((emp: Employee) => (
                                       <button 
                                         key={emp.id}
@@ -852,7 +843,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                          </div>
                          
                          <div className="space-y-2">
-                           {envEntries.map((e: any) => {
+                           {envEntries.map((e: ScheduleEntry) => {
                              const emp = state.employees.find((emp: Employee) => emp.id === e.employeeId);
                              return (
                                <div key={e.employeeId} className="group relative bg-slate-800/80 p-3 rounded-2xl border border-slate-700 hover:border-blue-600 transition-all flex items-center justify-between">
@@ -871,7 +862,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                                        <button className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-blue-400 transition-all"><RotateCw size={12}/></button>
                                        <div className="hidden group-hover/swap:block absolute right-0 top-full mt-1 w-40 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-40 p-1">
                                           {state.employees
-                                            .filter((x: Employee) => x.categoryId === e.categoryId && !dayEntries.some((de: any) => de.employeeId === x.id))
+                                            .filter((x: Employee) => x.categoryId === e.categoryId && !dayEntries.some((de: ScheduleEntry) => de.employeeId === x.id))
                                             .map((x: Employee) => (
                                               <button key={x.id} onClick={() => onSwap(specialDay.date, e.employeeId, x.id)} className="w-full text-left p-2 hover:bg-blue-600 rounded-lg text-[10px] font-bold truncate transition-all">
                                                 {x.name}
@@ -905,7 +896,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
 
 const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
   const [search, setSearch] = useState('');
-  const filtered = state.employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = state.employees.filter((e: Employee) => e.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-10 animate-in fade-in">
@@ -926,14 +917,14 @@ const EmployeesList: React.FC<{ state: AppState }> = ({ state }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
-            {filtered.map(e => (
+            {filtered.map((e: Employee) => (
               <tr key={e.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="p-8">
                   <span className="font-black text-slate-100 text-xl">{e.name}</span>
                 </td>
                 <td className="p-8">
                   <span className="px-5 py-2 bg-slate-800 border border-slate-700 rounded-[14px] text-[10px] font-black text-slate-300 uppercase tracking-wider">
-                    {state.categories.find(c => c.id === e.categoryId)?.name}
+                    {state.categories.find((c: Category) => c.id === e.categoryId)?.name}
                   </span>
                 </td>
                 <td className="p-8">
