@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -85,7 +84,6 @@ const App: React.FC = () => {
     const checkApiKey = async () => {
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        // Se process.env.API_KEY não existir e não houver chave selecionada, alerta o erro de API
         if (!hasKey && !process.env.API_KEY) {
           setApiError(true);
         }
@@ -168,12 +166,11 @@ const App: React.FC = () => {
   };
 
   const handleGenerateSchedule = async () => {
-    // Verifica se a chave de API está presente antes de tentar gerar
     if (!process.env.API_KEY && window.aistudio) {
       const hasKey = await window.aistudio.hasSelectedApiKey();
       if (!hasKey) {
         await handleSelectApiKey();
-        // Após abrir o seletor, assumimos que o usuário selecionou e prosseguimos
+        return;
       }
     }
 
@@ -794,7 +791,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 items-start">
           {displayDays.map((specialDay: SpecialDay) => {
-            const dayEntries = schedules.filter((e: any) => e.date === specialDay.date);
+            const dayEntries = schedules.filter((e: ScheduleEntry) => e.date === specialDay.date);
             const dateObj = new Date(specialDay.date);
             
             return (
@@ -812,7 +809,7 @@ const CalendarView: React.FC<any> = ({ state, currentMonth, onMonthChange, onSwa
                 <div className="space-y-6 flex-1">
                   {state.environments.map((env: Environment) => {
                     const envEntries = dayEntries.filter((e: ScheduleEntry) => e.environmentId === env.id);
-                    const hasReqs = Object.values(env.requirements).some((v: any) => v > 0);
+                    const hasReqs = Object.values(env.requirements).some((v: number) => v > 0);
                     if (!hasReqs && envEntries.length === 0) return null;
 
                     return (

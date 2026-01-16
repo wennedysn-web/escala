@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, Employee, Environment, SpecialDay, ScheduleEntry } from "./types";
 
@@ -14,9 +13,13 @@ export const generateScheduleWithAI = async (
   specialDays: SpecialDay[]
 ): Promise<ScheduleEntry[]> => {
   
-  // Initialization of the Gemini API client using the mandatory named parameter for apiKey.
-  // The API key is accessed exclusively via process.env.API_KEY.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key não configurada. Por favor, selecione uma chave no diálogo.");
+  }
+
+  // Initialization of the Gemini API client.
+  const ai = new GoogleGenAI({ apiKey });
   
   const currentMonthDays = specialDays.filter(d => d.date.startsWith(month));
 
@@ -49,7 +52,6 @@ export const generateScheduleWithAI = async (
   `;
 
   try {
-    // Calling generateContent with the model name, prompt, and system instruction.
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
@@ -78,7 +80,6 @@ export const generateScheduleWithAI = async (
       }
     });
 
-    // Directly accessing the .text property of GenerateContentResponse.
     const text = response.text;
     if (!text) throw new Error("Resposta vazia da IA.");
 
