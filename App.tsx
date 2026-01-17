@@ -185,14 +185,33 @@ const App: React.FC = () => {
     setApiError(false);
 
     try {
-      // Passa a chave do banco (dbApiKey) se disponível
+      // Cálculo do mês anterior para buscar o histórico e intercalar funcionários
+      const [year, month] = currentMonth.split('-').map(Number);
+      const prevDate = new Date(year, month - 2, 1);
+      const previousMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      // Busca histórico do mês anterior no banco
+      const { data: historyData } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('month_key', previousMonthKey);
+
+      const history: ScheduleEntry[] = (historyData || []).map((s: any) => ({
+        date: s.date,
+        employeeId: s.employee_id,
+        environmentId: s.environment_id,
+        categoryId: s.category_id
+      }));
+
+      // Passa a chave do banco (dbApiKey) e o histórico se disponíveis
       const entries = await generateScheduleWithAI(
         currentMonth,
         state.categories,
         state.employees,
         state.environments,
         state.specialDays,
-        dbApiKey || undefined
+        dbApiKey || undefined,
+        history
       );
       
       if (!entries || entries.length === 0) {

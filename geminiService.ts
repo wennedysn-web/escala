@@ -10,7 +10,8 @@ export const generateScheduleWithAI = async (
   employees: Employee[],
   environments: Environment[],
   specialDays: SpecialDay[],
-  providedApiKey?: string
+  providedApiKey?: string,
+  history?: ScheduleEntry[]
 ): Promise<ScheduleEntry[]> => {
   
   // Prioriza a chave provida (ex: do banco de dados) sobre a do ambiente
@@ -36,7 +37,12 @@ export const generateScheduleWithAI = async (
     1. Gere escala EXCLUSIVAMENTE para as datas fornecidas na lista de 'Dias Especiais'.
     2. Respeite os requisitos de cada ambiente (quantidade de pessoas por categoria).
     3. Um funcionário não pode estar em dois lugares no mesmo dia.
-    4. DISTRIBUIÇÃO JUSTA: Tente não repetir o mesmo funcionário em todos os feriados se houver outros disponíveis da mesma categoria.
+    
+    4. INTERCALAÇÃO E JUSTIÇA (REGRA DE OURO): 
+       - Analise a 'Escala do Mês Anterior' fornecida.
+       - Funcionários que trabalharam muitos dias no mês anterior devem ter PRIORIDADE BAIXA para este mês, dando lugar a quem trabalhou menos.
+       - Promova uma rotação (intercalação) entre todos os funcionários da mesma categoria para que nenhum seja sobrecarregado consecutivamente.
+       
     5. RESTRIÇÃO (isRestricted: true): Funcionário restrito NUNCA trabalha sozinho na sua categoria. Precisa de +1 colega da mesma categoria sem restrição no mesmo local.
 
     RETORNO: JSON puro seguindo o esquema.
@@ -49,8 +55,9 @@ export const generateScheduleWithAI = async (
     - Categorias: ${JSON.stringify(categories)}
     - Equipe: ${JSON.stringify(employees)}
     - Ambientes/Postos: ${JSON.stringify(environments)}
+    - Escala do Mês Anterior (Para Intercalação): ${JSON.stringify(history || [])}
 
-    Gere a lista de 'entries'.
+    Gere a lista de 'entries' equilibrada.
   `;
 
   try {
